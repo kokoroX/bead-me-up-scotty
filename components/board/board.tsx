@@ -197,8 +197,8 @@ export function Board() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-shrink-0 items-center gap-3 border-b border-border bg-[var(--surface)] p-[14px_22px]">
-        <div className="mr-1 flex flex-col gap-px">
+      <header className="@container flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-[10px] border-b border-border bg-[var(--surface)] p-[14px_22px]">
+        <div className="order-1 mr-1 flex flex-shrink-0 flex-col gap-px whitespace-nowrap">
           <h1 className="m-0 text-base font-[650] tracking-[-.01em]">Board</h1>
           <span className="text-[11.5px] text-[var(--text-3)]">
             {visible.length} beads · live from <span className="font-mono">bd list</span>
@@ -215,42 +215,44 @@ export function Board() {
           onClearAllAction={clearFilters}
         />
 
-        <label
-          className="flex h-9 flex-shrink-0 items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface-2)] px-[10px] text-[12.5px] text-[var(--text-2)]"
-          title={
-            boardPrefs.sortMode === "manual"
-              ? "Drag to reorder cards or move them between status columns"
-              : "Drag between status columns; choose Manual to reorder within a column"
-          }
-        >
-          <span className="font-medium">Sort</span>
-          <select
-            aria-label="Sort board cards"
-            value={boardPrefs.sortMode}
-            onChange={(e) =>
-              setBoardPrefs({
-                ...boardPrefs,
-                sortMode: e.target.value as BoardSortMode,
-              })
+        <div className="order-2 ml-auto flex flex-shrink-0 items-center gap-3 @min-[720px]:order-3 @min-[1400px]:order-4">
+          <label
+            className="flex h-9 flex-shrink-0 items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface-2)] px-[10px] text-[12.5px] text-[var(--text-2)]"
+            title={
+              boardPrefs.sortMode === "manual"
+                ? "Drag to reorder cards or move them between status columns"
+                : "Drag between status columns; choose Manual to reorder within a column"
             }
-            className="cursor-pointer border-none bg-transparent text-[12.5px] font-semibold text-[var(--text)] outline-none"
           >
-            <option value="priority">Priority</option>
-            <option value="updated">Recently updated</option>
-            <option value="manual">Manual</option>
-          </select>
-        </label>
+            <span className="font-medium">Sort</span>
+            <select
+              aria-label="Sort board cards"
+              value={boardPrefs.sortMode}
+              onChange={(e) =>
+                setBoardPrefs({
+                  ...boardPrefs,
+                  sortMode: e.target.value as BoardSortMode,
+                })
+              }
+              className="cursor-pointer border-none bg-transparent text-[12.5px] font-semibold text-[var(--text)] outline-none"
+            >
+              <option value="priority">Priority</option>
+              <option value="updated">Recently updated</option>
+              <option value="manual">Manual</option>
+            </select>
+          </label>
 
-        {!readOnly && (
-          <button
-            onClick={() => openCreate()}
-            className="flex h-9 flex-shrink-0 items-center gap-[6px] rounded-[9px] px-[14px] text-[13px] font-[550] text-white"
-            style={{ background: "var(--brand)", boxShadow: "0 2px 8px -2px var(--brand)" }}
-          >
-            <Icon name="plus" size={15} />
-            <span>New</span>
-          </button>
-        )}
+          {!readOnly && (
+            <button
+              onClick={() => openCreate()}
+              className="flex h-9 flex-shrink-0 items-center gap-[6px] rounded-[9px] px-[14px] text-[13px] font-[550] text-white"
+              style={{ background: "var(--brand)", boxShadow: "0 2px 8px -2px var(--brand)" }}
+            >
+              <Icon name="plus" size={15} />
+              <span>New</span>
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="bd-scroll min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-[18px_22px]">

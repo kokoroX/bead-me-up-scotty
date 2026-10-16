@@ -150,8 +150,8 @@ export function ListView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-shrink-0 items-center gap-3 border-b border-border bg-[var(--surface)] p-[14px_22px]">
-        <div className="mr-1 flex flex-col gap-px">
+      <header className="@container flex flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-[10px] border-b border-border bg-[var(--surface)] p-[14px_22px]">
+        <div className="order-1 mr-1 flex flex-shrink-0 flex-col gap-px whitespace-nowrap">
           <h1 className="m-0 text-base font-[650] tracking-[-.01em]">List</h1>
           <span className="text-[11.5px] text-[var(--text-3)]">
             {rows.length} beads · drag to set run-order
@@ -171,7 +171,7 @@ export function ListView() {
         {!readOnly && (
           <button
             onClick={() => openCreate()}
-            className="flex h-9 flex-shrink-0 items-center gap-[6px] rounded-[9px] px-[14px] text-[13px] font-[550] text-white"
+            className="order-2 ml-auto flex h-9 flex-shrink-0 items-center gap-[6px] rounded-[9px] px-[14px] text-[13px] font-[550] text-white @min-[720px]:order-3 @min-[1400px]:order-4"
             style={{ background: "var(--brand)", boxShadow: "0 2px 8px -2px var(--brand)" }}
           >
             <Icon name="plus" size={15} />

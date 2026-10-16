@@ -52,20 +52,26 @@ export function FilterBar({
     onShowArchived(false);
   };
 
+  // Both pieces sit directly in the view header's wrapping flex row, which is
+  // an `@container` (Board and List headers). `order` reshuffles them by
+  // header width so the search box never shrinks below a usable size:
+  //   narrow  → title · actions / search (full row) / facets (scroll row)
+  //   medium  → title · search · actions / facets (scroll row)
+  //   wide    → title · search · facets · actions, all on one row
   return (
     <>
-      <div className="flex h-9 max-w-[280px] flex-1 items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface-2)] px-[11px]">
+      <div className="order-3 flex h-9 min-w-0 basis-full items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface-2)] px-[11px] @min-[720px]:order-2 @min-[720px]:max-w-[320px] @min-[720px]:flex-1 @min-[720px]:basis-auto @min-[1400px]:max-w-[280px]">
         <Icon name="search" size={15} className="flex-shrink-0 text-[var(--text-3)]" />
         <input
           data-search
           value={filters.search}
           onChange={(e) => set({ search: e.target.value })}
           placeholder="Search beads…  (/)"
-          className="w-full border-none bg-transparent text-[13px] text-[var(--text)] outline-none"
+          className="w-full min-w-0 border-none bg-transparent text-[13px] text-[var(--text)] outline-none"
         />
       </div>
 
-      <div className="flex items-center gap-[7px]">
+      <div className="order-4 flex min-w-0 basis-full items-center gap-[7px] overflow-x-auto [scrollbar-width:none] @min-[1400px]:order-3 @min-[1400px]:flex-1 *:flex-shrink-0 [&::-webkit-scrollbar]:hidden">
         <MultiSelectFilter
           label="Status"
           options={BEAD_STATUSES.map((s) => ({ value: s, label: statusLabel(s) }))}
