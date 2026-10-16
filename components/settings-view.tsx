@@ -15,6 +15,7 @@ import { KEYBOARD_SHORTCUT_GROUPS } from "@/lib/keyboard-shortcuts";
 import { KeyboardHelpDialog, ShortcutKeys } from "@/components/keyboard-help-dialog";
 
 import { UsageStatisticsSetting } from "@/components/usage-statistics";
+import { DetailFieldsSetting } from "@/components/detail-fields";
 
 const inputClass =
   "h-[38px] rounded-[9px] border border-border bg-[var(--surface-2)] px-3 text-[12.5px] text-[var(--text)] outline-none focus:border-[var(--brand)]";
@@ -37,7 +38,7 @@ export function SettingsView() {
         </span>
       </header>
       <div className="bd-scroll min-h-0 flex-1 overflow-y-auto p-[24px_22px]">
-        <div className="mx-auto mb-[18px] flex max-w-[620px] flex-col gap-[18px]"><ViewerModeSetting /><DefaultViewSetting /><Card title="Usage statistics"><UsageStatisticsSetting /></Card></div>
+        <div className="mx-auto mb-[18px] flex max-w-[620px] flex-col gap-[18px]"><ViewerModeSetting /><DefaultViewSetting /><Card title="Detail fields"><DetailFieldsSetting /></Card><Card title="Usage statistics"><UsageStatisticsSetting /></Card></div>
         {data ? (
           <SettingsForm key={key} data={data} />
         ) : (

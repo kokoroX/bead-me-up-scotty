@@ -23,6 +23,10 @@ interface Extra {
   comments?: Comment[];
   blocks?: string[];
   related?: string[];
+  /** Optional bd planning/reference fields, shown by the drawer's Fields menu. */
+  planning?: Partial<
+    Pick<Bead, "owner" | "started_at" | "due_at" | "defer_until" | "estimated_minutes" | "external_ref" | "spec_id" | "metadata">
+  >;
 }
 
 function D(
@@ -62,6 +66,7 @@ function D(
     dependencies,
     comments: extra.comments ?? [],
     parent: parent ?? null,
+    ...extra.planning,
   };
 }
 
@@ -72,7 +77,7 @@ export function demoBeads(): Bead[] {
   return [
     // epics (milestones M0–M5)
     D("bd-9f2a", "Adapter & schema (M0)", "epic", "in_progress", 1, "stevey", "stevey", null, { description: "The bd bridge, Zod schemas, config, and a doctor preflight. Everything else builds on this.", created_at: "2026-06-02T09:00:00Z" }),
-    D("bd-3c71", "Board read (M1)", "epic", "open", 1, "stevey", "stevey", null, { description: "Read-only board: columns, filters, search, origin badges and a detail drawer. Powered by bd list/ready/blocked." }),
+    D("bd-3c71", "Board read (M1)", "epic", "open", 1, "stevey", "stevey", null, { description: "Read-only board: columns, filters, search, origin badges and a detail drawer. Powered by bd list/ready/blocked.", planning: { owner: "stevey@example.com", started_at: "2026-06-10T09:30:00Z", due_at: "2026-06-12T17:00:00Z", estimated_minutes: 960, external_ref: "https://github.com/steveyegge/beads/issues/1" } }),
     D("bd-7e40", "Write basics (M2)", "epic", "open", 2, "stevey", "dana", null, { description: "Create/edit/close/delete, comments, attribution stamping, optimistic updates + toasts." }),
     D("bd-b18d", "Flow & epics (M3)", "epic", "deferred", 2, "stevey", "", null, { description: "Backlog↔Ready DnD, Kanban statuses, epics with progress, archive." }),
     D("bd-c552", "Dependencies & graph (M4)", "epic", "deferred", 3, "claude-agent", "", null, { description: "Dep panel add/remove with cycle checks; React Flow graph with drag-to-link." }),
@@ -91,7 +96,7 @@ export function demoBeads(): Bead[] {
     D("bd-3c71.5", "Empty / loading / error states", "chore", "deferred", 3, "stevey", "", "bd-3c71", { description: "Skeletons, empty columns, typed BdError surfaces." }),
     // M2 children
     D("bd-7e40.1", "Create modal + bd create wiring", "feature", "open", 1, "stevey", "stevey", "bd-7e40", { description: "Type, title, description, priority, assignee, labels, parent epic. Zod-validated." }),
-    D("bd-7e40.2", "Inline edit (send only changed fields)", "feature", "deferred", 2, "amp-bot", "", "bd-7e40", { description: "bd update <id> with only the changed flags." }),
+    D("bd-7e40.2", "Inline edit (send only changed fields)", "feature", "deferred", 2, "amp-bot", "", "bd-7e40", { description: "bd update <id> with only the changed flags.", planning: { owner: "dana@example.com", defer_until: "2026-06-20T09:00:00Z", estimated_minutes: 90, external_ref: "gh-42", spec_id: "docs/specs/inline-edit.md", metadata: { area: "drawer", risk: "low" } } }),
     D("bd-7e40.3", "Comments thread + composer", "feature", "open", 2, "stevey", "dana", "bd-7e40", { description: "Author-stamped comments; newest-last with relative time." }),
     D("bd-7e40.4", "Attribution stamping (BEADS_ACTOR)", "task", "open", 1, "stevey", "stevey", "bd-7e40", { description: "Every UI write runs with BEADS_ACTOR=<humanActor>." }),
     D("bd-7e40.5", "Optimistic updates + toasts", "task", "deferred", 2, "claude-agent", "", "bd-7e40", { description: "TanStack Query optimistic mutations with rollback on adapter error." }),

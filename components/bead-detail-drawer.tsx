@@ -20,6 +20,15 @@ import { DescriptionContent } from "@/components/description-content";
 import { MarkdownToolbar, applyTransform } from "@/components/markdown-toolbar";
 import { bold, italic, link } from "@/lib/markdown-edit";
 import { AiAssistPanel } from "@/components/ai-assist-panel";
+import { DetailFieldsMenu } from "@/components/detail-fields";
+import { useDetailFields } from "@/hooks/use-detail-fields";
+import {
+  DETAIL_FIELDS,
+  fmtEstimate,
+  isPast,
+  type DetailFieldKey,
+  type DetailFieldVisibility,
+} from "@/lib/bead-fields";
 import {
   useUpdateBead,
   useSetStatus,
@@ -195,6 +204,7 @@ function DrawerBody({
     useApp();
   const actor = meta?.humanActor ?? "you";
   const isDemo = meta?.kind === "demo";
+  const { visible: show } = useDetailFields();
 
   const update = useUpdateBead();
   const setStatus = useSetStatus();
@@ -384,6 +394,7 @@ function DrawerBody({
         <CopyableId id={bead.id} className="font-mono text-[13px] text-[var(--text-2)]" />
         <StatusChip status={bead.status} />
         <span className="flex-1" />
+        <DetailFieldsMenu />
         <IconBtn title="Copy link" onClick={copyLink}>
           <Icon name="link" size={15} />
         </IconBtn>
@@ -455,85 +466,97 @@ function DrawerBody({
           </SheetTitle>
         )}
 
-        <div className="mb-4 grid grid-cols-2 gap-[10px]">
-          <label className="flex flex-col gap-[5px]">
-            <span className={fieldLabel}>Status</span>
-            <select
-              disabled={readOnly}
-              className={selectClass}
-              value={closing && !readOnly ? "closed" : bead.status}
-              onChange={(e) => {
-                const next = e.target.value;
-                if (next === "closed" && bead.status !== "closed") startClosing();
-                else {
-                  cancelClosing();
-                  setStatus.mutate({ id: bead.id, status: next });
-                }
-              }}
-            >
-              {BEAD_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {statusLabel(s)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-[5px]">
-            <span className={fieldLabel}>Priority</span>
-            <select
-              disabled={readOnly}
-              className={selectClass}
-              value={String(bead.priority)}
-              onChange={(e) =>
-                update.mutate({ id: bead.id, patch: { priority: Number(e.target.value) } })
-              }
-            >
-              {[0, 1, 2, 3, 4].map((p) => (
-                <option key={p} value={String(p)}>
-                  {p} · {["Critical", "High", "Medium", "Low", "Backlog"][p]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <AssigneeField bead={bead} />
-          <div className="flex flex-col gap-[5px]">
-            {/* Labelled by what the parent actually IS. Only epics get routed to
-                the Epics screen — it renders issue_type === "epic" only, so
-                sending a task/feature parent there used to land the user on an
-                empty screen with nothing highlighted. */}
-            <span className={fieldLabel}>{ep && ep.issue_type !== "epic" ? "Parent" : "Epic"}</span>
-            {ep ? (
-              <button
-                type="button"
-                onClick={() => pushDetail(ep.id)}
-                title={`Open ${ep.id}`}
-                className="flex h-9 items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface-2)] px-[10px] text-left text-[var(--brand)] hover:border-[var(--brand)] hover:bg-[var(--brand-weak)]"
-              >
-                <Icon
-                  name={ep.issue_type === "epic" ? "target" : typeIconName(ep.issue_type)}
-                  size={14}
-                  className="flex-shrink-0"
-                />
-                <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px]">
-                  {ep.title}
-                </span>
-                <span className="flex-1" />
-                <Icon name="chevron" size={13} className="-rotate-90 flex-shrink-0 text-[var(--text-3)]" />
-              </button>
-            ) : (
-              <div className="flex h-9 items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface-2)] px-[10px] text-[var(--text-3)]">
-                <Icon name="target" size={14} />
-                <span className="text-[12.5px]">—</span>
+        {(show.status || show.priority || show.assignee || show.parent) && (
+          <div className="mb-4 grid grid-cols-2 gap-[10px]">
+            {show.status && (
+              <label className="flex flex-col gap-[5px]">
+                <span className={fieldLabel}>Status</span>
+                <select
+                  disabled={readOnly}
+                  className={selectClass}
+                  value={closing && !readOnly ? "closed" : bead.status}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    if (next === "closed" && bead.status !== "closed") startClosing();
+                    else {
+                      cancelClosing();
+                      setStatus.mutate({ id: bead.id, status: next });
+                    }
+                  }}
+                >
+                  {BEAD_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {statusLabel(s)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {show.priority && (
+              <label className="flex flex-col gap-[5px]">
+                <span className={fieldLabel}>Priority</span>
+                <select
+                  disabled={readOnly}
+                  className={selectClass}
+                  value={String(bead.priority)}
+                  onChange={(e) =>
+                    update.mutate({ id: bead.id, patch: { priority: Number(e.target.value) } })
+                  }
+                >
+                  {[0, 1, 2, 3, 4].map((p) => (
+                    <option key={p} value={String(p)}>
+                      {p} · {["Critical", "High", "Medium", "Low", "Backlog"][p]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {show.assignee && <AssigneeField bead={bead} />}
+            {show.parent && (
+              <div className="flex flex-col gap-[5px]">
+                {/* Labelled by what the parent actually IS. Only epics get routed to
+                    the Epics screen — it renders issue_type === "epic" only, so
+                    sending a task/feature parent there used to land the user on an
+                    empty screen with nothing highlighted. */}
+                <span className={fieldLabel}>{ep && ep.issue_type !== "epic" ? "Parent" : "Epic"}</span>
+                {ep ? (
+                  <button
+                    type="button"
+                    onClick={() => pushDetail(ep.id)}
+                    title={`Open ${ep.id}`}
+                    className="flex h-9 items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface-2)] px-[10px] text-left text-[var(--brand)] hover:border-[var(--brand)] hover:bg-[var(--brand-weak)]"
+                  >
+                    <Icon
+                      name={ep.issue_type === "epic" ? "target" : typeIconName(ep.issue_type)}
+                      size={14}
+                      className="flex-shrink-0"
+                    />
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px]">
+                      {ep.title}
+                    </span>
+                    <span className="flex-1" />
+                    <Icon name="chevron" size={13} className="-rotate-90 flex-shrink-0 text-[var(--text-3)]" />
+                  </button>
+                ) : (
+                  <div className="flex h-9 items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface-2)] px-[10px] text-[var(--text-3)]">
+                    <Icon name="target" size={14} />
+                    <span className="text-[12.5px]">—</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
-        </div>
+        )}
 
-        <LabelsField
-          bead={bead}
-          suggestions={labelSuggestions}
-          onChange={(labels) => update.mutate({ id: bead.id, patch: { labels } })}
-        />
+        {show.labels && (
+          <LabelsField
+            bead={bead}
+            suggestions={labelSuggestions}
+            onChange={(labels) => update.mutate({ id: bead.id, patch: { labels } })}
+          />
+        )}
+
+        <DetailsGrid bead={bead} show={show} />
 
 
         {closing && !readOnly && (
@@ -577,351 +600,357 @@ function DrawerBody({
           </div>
         )}
 
-        <Section>
-          <div className={`${fieldLabel} mb-[6px] flex items-center gap-2`}>
-            <span>Description</span>
-            {progress.total > 0 && (
-              <span className="rounded-full border border-border bg-[var(--surface-2)] px-[7px] py-px font-normal normal-case tracking-normal text-[var(--text-2)]">
-                {progress.done}/{progress.total} done
-              </span>
-            )}
-            {editing && !readOnly && !isDemo && !previewEdit && (
-              <span className="font-normal normal-case tracking-normal text-[var(--text-3)]">
-                · drop or paste images
-              </span>
-            )}
-            {editing && !readOnly && (
-              <button
-                onClick={() => setPreviewEdit((p) => !p)}
-                className="ml-auto rounded-md border border-border bg-[var(--surface-2)] px-[8px] py-[2px] text-[11px] font-normal normal-case tracking-normal text-[var(--text-2)] hover:bg-[var(--surface-3)]"
-              >
-                {previewEdit ? "Write" : "Preview"}
-              </button>
-            )}
-          </div>
-          {editing && !readOnly ? (
-            <>
-              {previewEdit ? (
-                <DescriptionContent
-                  text={descDraft.trim() ? descDraft : "_Nothing to preview yet._"}
-                  projectId={projectId}
-                  className="rounded-[10px] border border-border bg-[var(--surface-2)] p-[12px_13px] text-[13.5px] leading-[1.55] text-[var(--text-2)]"
-                />
-              ) : (
-              <div
-                className="relative"
-                onDrop={drop.onDrop}
-                onDragOver={drop.onDragOver}
-                onDragLeave={drop.onDragLeave}
-              >
-                <MarkdownToolbar textareaRef={descRef} value={descDraft} onChange={setDescDraft} />
-                <textarea
-                  ref={descRef}
-                  value={descDraft}
-                  onChange={(e) => setDescDraft(e.target.value)}
-                  onPaste={drop.onPaste}
-                  onKeyDown={(e) => {
-                    // Cmd/Ctrl+Enter saves the edit, mirroring the create modal.
-                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                      e.preventDefault();
-                      saveEdit();
-                      return;
-                    }
-                    // Formatting shortcuts while the textarea is focused.
-                    if (e.metaKey || e.ctrlKey) {
-                      const fn =
-                        e.key === "b" ? bold : e.key === "i" ? italic : e.key === "k" ? link : null;
-                      if (fn) {
-                        e.preventDefault();
-                        applyTransform(descRef.current, descDraft, setDescDraft, fn);
-                      }
-                    }
-                  }}
-                  rows={6}
-                  placeholder="Describe this bead…"
-                  className={`w-full resize-y rounded-[10px] border bg-[var(--surface-2)] p-[12px_13px] text-[13.5px] leading-[1.55] text-[var(--text)] outline-none ${
-                    drop.dragOver ? "border-[var(--brand)] ring-1 ring-[var(--brand)]" : "border-border"
-                  }`}
-                />
-                {drop.uploading && (
-                  <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-[var(--surface)] px-2 py-0.5 text-[11px] text-[var(--text-3)]">
-                    <Icon name="image" size={12} /> Uploading…
-                  </span>
-                )}
-              </div>
+        {(show.description || (editing && !readOnly)) && (
+          <Section>
+            <div className={`${fieldLabel} mb-[6px] flex items-center gap-2`}>
+              <span>Description</span>
+              {progress.total > 0 && (
+                <span className="rounded-full border border-border bg-[var(--surface-2)] px-[7px] py-px font-normal normal-case tracking-normal text-[var(--text-2)]">
+                  {progress.done}/{progress.total} done
+                </span>
               )}
-              <div className="mt-2 flex items-center gap-2">
-                {!isDemo && !previewEdit && (
-                  <>
-                    <input
-                      ref={fileRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={drop.pickFiles}
-                    />
-                    <button
-                      onClick={() => fileRef.current?.click()}
-                      className="inline-flex h-8 items-center gap-[6px] rounded-lg border border-border bg-[var(--surface-2)] px-3 text-[12.5px] font-[550] text-[var(--text-2)] hover:bg-[var(--surface-3)]"
-                    >
-                      <Icon name="image" size={14} /> Attach image
-                    </button>
-                  </>
-                )}
-                <span className="flex-1" />
+              {editing && !readOnly && !isDemo && !previewEdit && (
+                <span className="font-normal normal-case tracking-normal text-[var(--text-3)]">
+                  · drop or paste images
+                </span>
+              )}
+              {editing && !readOnly && (
                 <button
-                  onClick={cancelEdit}
-                  className="h-8 rounded-lg border border-border bg-[var(--surface-2)] px-3 text-[12.5px] font-[550] hover:bg-[var(--surface-3)]"
+                  onClick={() => setPreviewEdit((p) => !p)}
+                  className="ml-auto rounded-md border border-border bg-[var(--surface-2)] px-[8px] py-[2px] text-[11px] font-normal normal-case tracking-normal text-[var(--text-2)] hover:bg-[var(--surface-3)]"
                 >
-                  Cancel
+                  {previewEdit ? "Write" : "Preview"}
                 </button>
-                <button
-                  onClick={saveEdit}
-                  disabled={!titleDraft.trim() || update.isPending}
-                  className="flex h-8 items-center gap-[6px] rounded-lg px-3 text-[12.5px] font-[550] text-white disabled:opacity-50"
-                  style={{ background: "var(--brand)" }}
-                >
-                  <Icon name="check" size={14} /> Save
-                </button>
-              </div>
-            </>
-          ) : bead.description ? (
-            <DescriptionContent
-              text={bead.description}
-              projectId={projectId}
-              onToggleTask={readOnly ? undefined : (idx) =>
-                update.mutate({
-                  id: bead.id,
-                  patch: { description: toggleTask(bead.description ?? "", idx) },
-                })
-              }
-              className={detailContentClass}
-            />
-          ) : (
-            <div className="rounded-[10px] border border-border bg-[var(--surface-2)] p-[12px_13px] text-[13.5px] leading-[1.55] text-[var(--text-3)]">
-              No description.
+              )}
             </div>
-          )}
-          {!editing && !readOnly && <AiAssistPanel bead={bead} />}
-        </Section>
-
-        {/* Dependencies */}
-        <Section>
-          <Header icon="link" label="Dependencies" count={dependencyRows.length} />
-          <div className="flex flex-col gap-[7px]">
-            {dependencyRows.map((row) => {
-              const c = row.activeBlocking ? "#ef4444" : "var(--text-2)";
-              return (
+            {editing && !readOnly ? (
+              <>
+                {previewEdit ? (
+                  <DescriptionContent
+                    text={descDraft.trim() ? descDraft : "_Nothing to preview yet._"}
+                    projectId={projectId}
+                    className="rounded-[10px] border border-border bg-[var(--surface-2)] p-[12px_13px] text-[13.5px] leading-[1.55] text-[var(--text-2)]"
+                  />
+                ) : (
                 <div
-                  key={row.key}
-                  className="flex items-center gap-[9px] rounded-[9px] border border-border bg-[var(--surface)] p-[9px_11px]"
+                  className="relative"
+                  onDrop={drop.onDrop}
+                  onDragOver={drop.onDragOver}
+                  onDragLeave={drop.onDragLeave}
                 >
+                  <MarkdownToolbar textareaRef={descRef} value={descDraft} onChange={setDescDraft} />
+                  <textarea
+                    ref={descRef}
+                    value={descDraft}
+                    onChange={(e) => setDescDraft(e.target.value)}
+                    onPaste={drop.onPaste}
+                    onKeyDown={(e) => {
+                      // Cmd/Ctrl+Enter saves the edit, mirroring the create modal.
+                      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                        e.preventDefault();
+                        saveEdit();
+                        return;
+                      }
+                      // Formatting shortcuts while the textarea is focused.
+                      if (e.metaKey || e.ctrlKey) {
+                        const fn =
+                          e.key === "b" ? bold : e.key === "i" ? italic : e.key === "k" ? link : null;
+                        if (fn) {
+                          e.preventDefault();
+                          applyTransform(descRef.current, descDraft, setDescDraft, fn);
+                        }
+                      }
+                    }}
+                    rows={6}
+                    placeholder="Describe this bead…"
+                    className={`w-full resize-y rounded-[10px] border bg-[var(--surface-2)] p-[12px_13px] text-[13.5px] leading-[1.55] text-[var(--text)] outline-none ${
+                      drop.dragOver ? "border-[var(--brand)] ring-1 ring-[var(--brand)]" : "border-border"
+                    }`}
+                  />
+                  {drop.uploading && (
+                    <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-[var(--surface)] px-2 py-0.5 text-[11px] text-[var(--text-3)]">
+                      <Icon name="image" size={12} /> Uploading…
+                    </span>
+                  )}
+                </div>
+                )}
+                <div className="mt-2 flex items-center gap-2">
+                  {!isDemo && !previewEdit && (
+                    <>
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={drop.pickFiles}
+                      />
+                      <button
+                        onClick={() => fileRef.current?.click()}
+                        className="inline-flex h-8 items-center gap-[6px] rounded-lg border border-border bg-[var(--surface-2)] px-3 text-[12.5px] font-[550] text-[var(--text-2)] hover:bg-[var(--surface-3)]"
+                      >
+                        <Icon name="image" size={14} /> Attach image
+                      </button>
+                    </>
+                  )}
+                  <span className="flex-1" />
                   <button
-                    type="button"
-                    disabled={!row.target}
-                    title={row.target ? `Open ${row.target.id}` : undefined}
-                    onClick={() => pushDetail(row.targetId)}
-                    className="flex min-w-0 flex-1 items-center gap-[9px] text-left disabled:cursor-default"
+                    onClick={cancelEdit}
+                    className="h-8 rounded-lg border border-border bg-[var(--surface-2)] px-3 text-[12.5px] font-[550] hover:bg-[var(--surface-3)]"
                   >
-                    <span
-                      className="flex-shrink-0 rounded-[5px] px-[7px] py-[2px] font-mono text-[10px] font-semibold"
-                      style={{
-                        color: c,
-                        background: row.activeBlocking ? "#ef444418" : "var(--surface-2)",
-                        border: `1px solid ${row.activeBlocking ? "#ef444433" : "var(--border)"}`,
-                      }}
-                    >
-                      {row.label}
-                    </span>
-                    <span className="flex-shrink-0 font-mono text-[11px] text-[var(--text-3)]">
-                      {row.targetId}
-                    </span>
-                    <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px]">
-                      {row.target?.title ?? "(unknown)"}
-                    </span>
-                    <span
-                      className="h-[7px] w-[7px] flex-shrink-0 rounded-full"
-                      style={{ background: catColor(row.target?.status ?? "open") }}
-                      title={statusLabel(row.target?.status ?? "open")}
-                    />
+                    Cancel
                   </button>
                   <button
-                    title="remove"
-                    disabled={readOnly}
-                    onClick={() =>
-                      removeDep.mutate({
-                        id: row.removeIssueId,
-                        dependsOnId: row.removeDependsOnId,
-                      })
+                    onClick={saveEdit}
+                    disabled={!titleDraft.trim() || update.isPending}
+                    className="flex h-8 items-center gap-[6px] rounded-lg px-3 text-[12.5px] font-[550] text-white disabled:opacity-50"
+                    style={{ background: "var(--brand)" }}
+                  >
+                    <Icon name="check" size={14} /> Save
+                  </button>
+                </div>
+              </>
+            ) : bead.description ? (
+              <DescriptionContent
+                text={bead.description}
+                projectId={projectId}
+                onToggleTask={readOnly ? undefined : (idx) =>
+                  update.mutate({
+                    id: bead.id,
+                    patch: { description: toggleTask(bead.description ?? "", idx) },
+                  })
+                }
+                className={detailContentClass}
+              />
+            ) : (
+              <div className="rounded-[10px] border border-border bg-[var(--surface-2)] p-[12px_13px] text-[13.5px] leading-[1.55] text-[var(--text-3)]">
+                No description.
+              </div>
+            )}
+            {!editing && !readOnly && <AiAssistPanel bead={bead} />}
+          </Section>
+        )}
+
+        {/* Dependencies */}
+        {show.dependencies && (
+          <Section>
+            <Header icon="link" label="Dependencies" count={dependencyRows.length} />
+            <div className="flex flex-col gap-[7px]">
+              {dependencyRows.map((row) => {
+                const c = row.activeBlocking ? "#ef4444" : "var(--text-2)";
+                return (
+                  <div
+                    key={row.key}
+                    className="flex items-center gap-[9px] rounded-[9px] border border-border bg-[var(--surface)] p-[9px_11px]"
+                  >
+                    <button
+                      type="button"
+                      disabled={!row.target}
+                      title={row.target ? `Open ${row.target.id}` : undefined}
+                      onClick={() => pushDetail(row.targetId)}
+                      className="flex min-w-0 flex-1 items-center gap-[9px] text-left disabled:cursor-default"
+                    >
+                      <span
+                        className="flex-shrink-0 rounded-[5px] px-[7px] py-[2px] font-mono text-[10px] font-semibold"
+                        style={{
+                          color: c,
+                          background: row.activeBlocking ? "#ef444418" : "var(--surface-2)",
+                          border: `1px solid ${row.activeBlocking ? "#ef444433" : "var(--border)"}`,
+                        }}
+                      >
+                        {row.label}
+                      </span>
+                      <span className="flex-shrink-0 font-mono text-[11px] text-[var(--text-3)]">
+                        {row.targetId}
+                      </span>
+                      <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px]">
+                        {row.target?.title ?? "(unknown)"}
+                      </span>
+                      <span
+                        className="h-[7px] w-[7px] flex-shrink-0 rounded-full"
+                        style={{ background: catColor(row.target?.status ?? "open") }}
+                        title={statusLabel(row.target?.status ?? "open")}
+                      />
+                    </button>
+                    <button
+                      title="remove"
+                      disabled={readOnly}
+                      onClick={() =>
+                        removeDep.mutate({
+                          id: row.removeIssueId,
+                          dependsOnId: row.removeDependsOnId,
+                        })
+                      }
+                      className="flex h-[22px] w-[22px] items-center justify-center rounded-md text-[var(--text-3)] hover:bg-[#ef444415] hover:text-[#ef4444]"
+                    >
+                      <Icon name="x" size={12} />
+                    </button>
+                  </div>
+                );
+              })}
+              {dependencyRows.length === 0 && !addingDep && (
+                <div className="px-[2px] py-1 text-[12px] text-[var(--text-3)]">
+                  No dependency relationships.
+                </div>
+              )}
+
+              {addingDep ? (
+                <DependencyEditor bead={bead} onDone={() => setAddingDep(false)} />
+              ) : (
+                <button
+                  disabled={readOnly}
+                  onClick={() => setAddingDep(true)}
+                  className="flex items-center gap-[7px] rounded-[9px] border border-dashed border-[var(--border-strong)] p-[8px_11px] text-[12.5px] font-medium text-[var(--text-2)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                >
+                  <Icon name="plus" size={14} />
+                  <span>Add dependency</span>
+                </button>
+              )}
+
+              {/* Require a human approval gate before this bead can proceed
+                  (bd gate create --type human --blocks <this>). Resolved from the
+                  gate's own drawer or the Needs You inbox. */}
+              {!readOnly && !gateBead && bead.status !== "closed" &&
+                (addingGate ? (
+                  <div className="flex items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface)] p-[9px_11px]">
+                    <input
+                      autoFocus
+                      value={gateReason}
+                      onChange={(e) => setGateReason(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !createGate.isPending) {
+                          createGate.mutate({ id: bead.id, reason: gateReason.trim() || undefined });
+                          setAddingGate(false);
+                          setGateReason("");
+                        }
+                        if (e.key === "Escape") setAddingGate(false);
+                      }}
+                      placeholder="Reason (optional) — e.g. needs design sign-off"
+                      className="h-8 flex-1 rounded-[9px] border border-border bg-[var(--surface-2)] px-[9px] text-[12.5px] text-[var(--text)] outline-none focus:border-[var(--brand)]"
+                    />
+                    <button
+                      disabled={createGate.isPending}
+                      onClick={() => {
+                        createGate.mutate({ id: bead.id, reason: gateReason.trim() || undefined });
+                        setAddingGate(false);
+                        setGateReason("");
+                      }}
+                      className="flex h-8 flex-shrink-0 items-center rounded-md px-3 text-[12px] font-[550] text-white disabled:opacity-50"
+                      style={{ background: "var(--brand)" }}
+                    >
+                      Create gate
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setAddingGate(true)}
+                    title="Block this bead on a human approval gate"
+                    className="flex items-center gap-[7px] rounded-[9px] border border-dashed border-[var(--border-strong)] p-[8px_11px] text-[12.5px] font-medium text-[var(--text-2)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                  >
+                    <Icon name="gate" size={14} />
+                    <span>Require approval</span>
+                  </button>
+                ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Subtasks — one level deep, deliberately not recursive. */}
+        {show.subtasks && (
+          <Section>
+            <Header icon="target" label="Subtasks" count={kids.length} />
+            {kids.length > 0 && (
+              <div className="mb-[9px] flex items-center gap-[9px]">
+                <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-[var(--surface-3)]">
+                  <div
+                    className="h-full rounded-full transition-[width]"
+                    style={{
+                      width: `${kidProgress.pct}%`,
+                      background: kidProgress.pct === 100 ? "#16a34a" : "var(--brand)",
+                    }}
+                  />
+                </div>
+                <span className="flex-shrink-0 font-mono text-[11px] text-[var(--text-3)]">
+                  {kidProgress.closed}/{kidProgress.total} · {kidProgress.pct}%
+                </span>
+              </div>
+            )}
+            <div className="flex flex-col gap-[7px]">
+              {kids.map((k) => (
+                <div
+                  key={k.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => pushDetail(k.id)}
+                  onKeyDown={(ev) => {
+                    if (ev.target !== ev.currentTarget) return;
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      pushDetail(k.id);
                     }
-                    className="flex h-[22px] w-[22px] items-center justify-center rounded-md text-[var(--text-3)] hover:bg-[#ef444415] hover:text-[#ef4444]"
+                  }}
+                  className="flex cursor-pointer items-center gap-[9px] rounded-[9px] border border-border bg-[var(--surface)] p-[9px_11px] hover:border-[var(--border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]"
+                >
+                  <span
+                    className="h-[7px] w-[7px] flex-shrink-0 rounded-full"
+                    style={{ background: catColor(k.status) }}
+                    title={statusLabel(k.status)}
+                  />
+                  <span className="flex-shrink-0 font-mono text-[11px] text-[var(--text-3)]">
+                    {k.id}
+                  </span>
+                  <Icon
+                    name={typeIconName(k.issue_type)}
+                    size={14}
+                    className="flex-shrink-0"
+                    style={{ color: typeColor(k.issue_type) }}
+                  />
+                  <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px]">
+                    {k.title}
+                  </span>
+                  <PriorityChip p={k.priority} />
+                  <OriginBadge
+                    origin={beadOrigin(k, humanAllowlist)}
+                    title={originTitle(k.created_by, beadOrigin(k, humanAllowlist))}
+                  />
+                  <span
+                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9.5px] font-semibold text-white"
+                    style={{ background: avatarColor(k.assignee ?? "") }}
+                    title={k.assignee || "Unassigned"}
+                  >
+                    {initials(k.assignee ?? "")}
+                  </span>
+                  <button
+                    title={`Detach ${k.id} from this bead`}
+                    aria-label={`Detach ${k.id}`}
+                    disabled={readOnly}
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      update.mutate({ id: k.id, patch: { parent: "" } });
+                    }}
+                    className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-md text-[var(--text-3)] hover:bg-[#ef444415] hover:text-[#ef4444]"
                   >
                     <Icon name="x" size={12} />
                   </button>
                 </div>
-              );
-            })}
-            {dependencyRows.length === 0 && !addingDep && (
-              <div className="px-[2px] py-1 text-[12px] text-[var(--text-3)]">
-                No dependency relationships.
-              </div>
-            )}
-
-            {addingDep ? (
-              <DependencyEditor bead={bead} onDone={() => setAddingDep(false)} />
-            ) : (
-              <button
-                disabled={readOnly}
-                onClick={() => setAddingDep(true)}
-                className="flex items-center gap-[7px] rounded-[9px] border border-dashed border-[var(--border-strong)] p-[8px_11px] text-[12.5px] font-medium text-[var(--text-2)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
-              >
-                <Icon name="plus" size={14} />
-                <span>Add dependency</span>
-              </button>
-            )}
-
-            {/* Require a human approval gate before this bead can proceed
-                (bd gate create --type human --blocks <this>). Resolved from the
-                gate's own drawer or the Needs You inbox. */}
-            {!readOnly && !gateBead && bead.status !== "closed" &&
-              (addingGate ? (
-                <div className="flex items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface)] p-[9px_11px]">
-                  <input
-                    autoFocus
-                    value={gateReason}
-                    onChange={(e) => setGateReason(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !createGate.isPending) {
-                        createGate.mutate({ id: bead.id, reason: gateReason.trim() || undefined });
-                        setAddingGate(false);
-                        setGateReason("");
-                      }
-                      if (e.key === "Escape") setAddingGate(false);
-                    }}
-                    placeholder="Reason (optional) — e.g. needs design sign-off"
-                    className="h-8 flex-1 rounded-[9px] border border-border bg-[var(--surface-2)] px-[9px] text-[12.5px] text-[var(--text)] outline-none focus:border-[var(--brand)]"
-                  />
-                  <button
-                    disabled={createGate.isPending}
-                    onClick={() => {
-                      createGate.mutate({ id: bead.id, reason: gateReason.trim() || undefined });
-                      setAddingGate(false);
-                      setGateReason("");
-                    }}
-                    className="flex h-8 flex-shrink-0 items-center rounded-md px-3 text-[12px] font-[550] text-white disabled:opacity-50"
-                    style={{ background: "var(--brand)" }}
-                  >
-                    Create gate
-                  </button>
-                </div>
-              ) : (
+              ))}
+              {kids.length === 0 && (
+                <div className="px-[2px] py-1 text-[12px] text-[var(--text-3)]">No subtasks yet.</div>
+              )}
+              {!readOnly && (
                 <button
-                  onClick={() => setAddingGate(true)}
-                  title="Block this bead on a human approval gate"
+                  onClick={() => openCreate({ parent: bead.id })}
                   className="flex items-center gap-[7px] rounded-[9px] border border-dashed border-[var(--border-strong)] p-[8px_11px] text-[12.5px] font-medium text-[var(--text-2)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
                 >
-                  <Icon name="gate" size={14} />
-                  <span>Require approval</span>
+                  <Icon name="plus" size={14} />
+                  <span>Add subtask</span>
                 </button>
-              ))}
-          </div>
-        </Section>
-
-        {/* Subtasks — one level deep, deliberately not recursive. */}
-        <Section>
-          <Header icon="target" label="Subtasks" count={kids.length} />
-          {kids.length > 0 && (
-            <div className="mb-[9px] flex items-center gap-[9px]">
-              <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-[var(--surface-3)]">
-                <div
-                  className="h-full rounded-full transition-[width]"
-                  style={{
-                    width: `${kidProgress.pct}%`,
-                    background: kidProgress.pct === 100 ? "#16a34a" : "var(--brand)",
-                  }}
-                />
-              </div>
-              <span className="flex-shrink-0 font-mono text-[11px] text-[var(--text-3)]">
-                {kidProgress.closed}/{kidProgress.total} · {kidProgress.pct}%
-              </span>
+              )}
             </div>
-          )}
-          <div className="flex flex-col gap-[7px]">
-            {kids.map((k) => (
-              <div
-                key={k.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => pushDetail(k.id)}
-                onKeyDown={(ev) => {
-                  if (ev.target !== ev.currentTarget) return;
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    pushDetail(k.id);
-                  }
-                }}
-                className="flex cursor-pointer items-center gap-[9px] rounded-[9px] border border-border bg-[var(--surface)] p-[9px_11px] hover:border-[var(--border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]"
-              >
-                <span
-                  className="h-[7px] w-[7px] flex-shrink-0 rounded-full"
-                  style={{ background: catColor(k.status) }}
-                  title={statusLabel(k.status)}
-                />
-                <span className="flex-shrink-0 font-mono text-[11px] text-[var(--text-3)]">
-                  {k.id}
-                </span>
-                <Icon
-                  name={typeIconName(k.issue_type)}
-                  size={14}
-                  className="flex-shrink-0"
-                  style={{ color: typeColor(k.issue_type) }}
-                />
-                <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px]">
-                  {k.title}
-                </span>
-                <PriorityChip p={k.priority} />
-                <OriginBadge
-                  origin={beadOrigin(k, humanAllowlist)}
-                  title={originTitle(k.created_by, beadOrigin(k, humanAllowlist))}
-                />
-                <span
-                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[9.5px] font-semibold text-white"
-                  style={{ background: avatarColor(k.assignee ?? "") }}
-                  title={k.assignee || "Unassigned"}
-                >
-                  {initials(k.assignee ?? "")}
-                </span>
-                <button
-                  title={`Detach ${k.id} from this bead`}
-                  aria-label={`Detach ${k.id}`}
-                  disabled={readOnly}
-                  onClick={(ev) => {
-                    ev.stopPropagation();
-                    update.mutate({ id: k.id, patch: { parent: "" } });
-                  }}
-                  className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-md text-[var(--text-3)] hover:bg-[#ef444415] hover:text-[#ef4444]"
-                >
-                  <Icon name="x" size={12} />
-                </button>
-              </div>
-            ))}
-            {kids.length === 0 && (
-              <div className="px-[2px] py-1 text-[12px] text-[var(--text-3)]">No subtasks yet.</div>
-            )}
-            {!readOnly && (
-              <button
-                onClick={() => openCreate({ parent: bead.id })}
-                className="flex items-center gap-[7px] rounded-[9px] border border-dashed border-[var(--border-strong)] p-[8px_11px] text-[12.5px] font-medium text-[var(--text-2)] hover:border-[var(--brand)] hover:text-[var(--brand)]"
-              >
-                <Icon name="plus" size={14} />
-                <span>Add subtask</span>
-              </button>
-            )}
-          </div>
-        </Section>
+          </Section>
+        )}
 
-        {design && (
+        {show.design && design && (
           <Section>
             <Header icon="pencil" label="Design" />
             <DescriptionContent
@@ -932,7 +961,7 @@ function DrawerBody({
           </Section>
         )}
 
-        {acceptance && (
+        {show.acceptance_criteria && acceptance && (
           <Section>
             <Header icon="target" label="Acceptance criteria" />
             <DescriptionContent
@@ -943,7 +972,7 @@ function DrawerBody({
           </Section>
         )}
 
-        {notes && (
+        {show.notes && notes && (
           <Section>
             <Header icon="list" label="Notes" />
             <DescriptionContent
@@ -954,7 +983,7 @@ function DrawerBody({
           </Section>
         )}
 
-        {closeReason && (
+        {show.close_reason && closeReason && (
           <Section>
             <Header icon="check" label="Close reason" />
             <DescriptionContent
@@ -966,88 +995,92 @@ function DrawerBody({
         )}
 
         {/* Comments */}
-        <Section>
-          <Header icon="comment" label="Comments" count={comments.length} />
-          <div className="mb-3 flex flex-col gap-3">
-            {comments.map((c, i) => {
-              const co = originOf(c.author, humanAllowlist);
-              return (
-                <div key={c.id ?? i} className="flex gap-[10px]">
-                  <span
-                    className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-                    style={{ background: avatarColor(c.author) }}
-                  >
-                    {initials(c.author)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-[3px] flex items-center gap-[7px]">
-                      <span className="text-[12.5px] font-semibold">{c.author}</span>
-                      <OriginBadge origin={co} title={co === "human" ? "Human" : "Agent"} />
-                      <span title={fmtDateTime(c.created_at)} className="text-[11px] text-[var(--text-3)]">
-                        {relTime(c.created_at)}
-                      </span>
+        {show.comments && (
+          <Section>
+            <Header icon="comment" label="Comments" count={comments.length} />
+            <div className="mb-3 flex flex-col gap-3">
+              {comments.map((c, i) => {
+                const co = originOf(c.author, humanAllowlist);
+                return (
+                  <div key={c.id ?? i} className="flex gap-[10px]">
+                    <span
+                      className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                      style={{ background: avatarColor(c.author) }}
+                    >
+                      {initials(c.author)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-[3px] flex items-center gap-[7px]">
+                        <span className="text-[12.5px] font-semibold">{c.author}</span>
+                        <OriginBadge origin={co} title={co === "human" ? "Human" : "Agent"} />
+                        <span title={fmtDateTime(c.created_at)} className="text-[11px] text-[var(--text-3)]">
+                          {relTime(c.created_at)}
+                        </span>
+                      </div>
+                      <DescriptionContent
+                        text={c.text}
+                        projectId={projectId}
+                        className="text-[13px] leading-[1.5] text-[var(--text-2)] [text-wrap:pretty]"
+                      />
                     </div>
-                    <DescriptionContent
-                      text={c.text}
-                      projectId={projectId}
-                      className="text-[13px] leading-[1.5] text-[var(--text-2)] [text-wrap:pretty]"
-                    />
                   </div>
+                );
+              })}
+              {comments.length === 0 && (
+                <div className="text-[12px] text-[var(--text-3)]">No comments yet.</div>
+              )}
+            </div>
+            <div className="flex items-start gap-[9px]">
+              <span
+                className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
+                style={{ background: "var(--brand)" }}
+              >
+                {initials(actor)}
+              </span>
+              <div className="flex flex-1 flex-col gap-2">
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder={`Comment as ${actor}…`}
+                  disabled={readOnly}
+                  rows={2}
+                  className="w-full resize-y rounded-[10px] border border-border bg-[var(--surface-2)] p-[9px_11px] text-[13px] leading-[1.5] text-[var(--text)] outline-none"
+                />
+                <div className="flex justify-end">
+                  <button
+                    disabled={readOnly || !draft.trim() || addComment.isPending}
+                    onClick={() => {
+                      const submitted = draft;
+                      addComment.mutate({ id: bead.id, text: submitted.trim() }, {
+                        onSuccess: () => setDraft((current) => current === submitted ? "" : current),
+                      });
+                    }}
+                    className="h-8 rounded-lg px-[14px] text-[12.5px] font-[550] text-white disabled:opacity-50"
+                    style={{ background: "var(--brand)" }}
+                  >
+                    Comment
+                  </button>
                 </div>
-              );
-            })}
-            {comments.length === 0 && (
-              <div className="text-[12px] text-[var(--text-3)]">No comments yet.</div>
-            )}
-          </div>
-          <div className="flex items-start gap-[9px]">
-            <span
-              className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white"
-              style={{ background: "var(--brand)" }}
-            >
-              {initials(actor)}
-            </span>
-            <div className="flex flex-1 flex-col gap-2">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder={`Comment as ${actor}…`}
-                disabled={readOnly}
-                rows={2}
-                className="w-full resize-y rounded-[10px] border border-border bg-[var(--surface-2)] p-[9px_11px] text-[13px] leading-[1.5] text-[var(--text)] outline-none"
-              />
-              <div className="flex justify-end">
-                <button
-                  disabled={readOnly || !draft.trim() || addComment.isPending}
-                  onClick={() => {
-                    const submitted = draft;
-                    addComment.mutate({ id: bead.id, text: submitted.trim() }, {
-                      onSuccess: () => setDraft((current) => current === submitted ? "" : current),
-                    });
-                  }}
-                  className="h-8 rounded-lg px-[14px] text-[12.5px] font-[550] text-white disabled:opacity-50"
-                  style={{ background: "var(--brand)" }}
-                >
-                  Comment
-                </button>
               </div>
             </div>
-          </div>
-        </Section>
+          </Section>
+        )}
 
         {/* Activity */}
-        <div>
-          <div className={`${fieldLabel} mb-[9px]`}>Activity</div>
-          <div className="flex flex-col gap-2">
-            {activity.map((a, i) => (
-              <div key={i} className="flex items-center gap-[9px] text-[12px] text-[var(--text-2)]">
-                <span className="h-[6px] w-[6px] flex-shrink-0 rounded-full bg-[var(--text-3)]" />
-                <span className="flex-1">{a.label}</span>
-                <span className="font-mono text-[11px] text-[var(--text-3)]">{a.time}</span>
-              </div>
-            ))}
+        {show.activity && (
+          <div>
+            <div className={`${fieldLabel} mb-[9px]`}>Activity</div>
+            <div className="flex flex-col gap-2">
+              {activity.map((a, i) => (
+                <div key={i} className="flex items-center gap-[9px] text-[12px] text-[var(--text-2)]">
+                  <span className="h-[6px] w-[6px] flex-shrink-0 rounded-full bg-[var(--text-3)]" />
+                  <span className="flex-1">{a.label}</span>
+                  <span className="font-mono text-[11px] text-[var(--text-3)]">{a.time}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </>
   );
@@ -1210,5 +1243,96 @@ function IconBtn({
     >
       {children}
     </button>
+  );
+}
+
+const DETAIL_GRID_KEYS = [
+  "owner",
+  "due_at",
+  "defer_until",
+  "estimated_minutes",
+  "external_ref",
+  "spec_id",
+  "created_at",
+  "started_at",
+  "updated_at",
+  "closed_at",
+] as const satisfies readonly DetailFieldKey[];
+
+/**
+ * Read-only bd fields the drawer had no home for (bd 1.3.0 export). Each one
+ * appears only when switched on in the Fields menu; a switched-on field with no
+ * value shows "—" so turning it on always visibly does something.
+ */
+function DetailsGrid({ bead, show }: { bead: Bead; show: DetailFieldVisibility }) {
+  const keys = DETAIL_GRID_KEYS.filter((k) => show[k]);
+  const metadata = Object.entries(bead.metadata ?? {});
+  if (keys.length === 0 && !show.metadata) return null;
+  const label = (k: DetailFieldKey) => DETAIL_FIELDS.find((f) => f.key === k)?.label ?? k;
+  const date = (iso: string | null | undefined) =>
+    iso ? <span title={relTime(iso)}>{fmtDateTime(iso)}</span> : null;
+  const overdue = bead.status !== "closed" && isPast(bead.due_at);
+
+  const value = (k: (typeof DETAIL_GRID_KEYS)[number]): React.ReactNode => {
+    switch (k) {
+      case "owner":
+        return bead.owner || null;
+      case "due_at":
+        return bead.due_at ? (
+          <span style={overdue ? { color: "#ef4444" } : undefined}>
+            {date(bead.due_at)}
+            {overdue && " · overdue"}
+          </span>
+        ) : null;
+      case "estimated_minutes":
+        return bead.estimated_minutes ? fmtEstimate(bead.estimated_minutes) : null;
+      case "external_ref":
+        if (!bead.external_ref) return null;
+        return /^https?:\/\//.test(bead.external_ref) ? (
+          <a
+            href={bead.external_ref}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[var(--brand)] hover:underline"
+          >
+            {bead.external_ref}
+          </a>
+        ) : (
+          <span className="font-mono text-[12px]">{bead.external_ref}</span>
+        );
+      case "spec_id":
+        return bead.spec_id ? <span className="font-mono text-[12px]">{bead.spec_id}</span> : null;
+      default:
+        return date(bead[k]);
+    }
+  };
+
+  return (
+    <div className="mb-4 grid grid-cols-2 gap-x-[10px] gap-y-[9px] rounded-[10px] border border-border bg-[var(--surface-2)] p-[11px_13px]">
+      {keys.map((k) => (
+        <div key={k} className="flex min-w-0 flex-col gap-[3px]">
+          <span className={fieldLabel}>{label(k)}</span>
+          <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px] text-[var(--text)]">
+            {value(k) ?? <span className="text-[var(--text-3)]">—</span>}
+          </span>
+        </div>
+      ))}
+      {show.metadata && (
+        <div className="col-span-2 flex min-w-0 flex-col gap-[5px]">
+          <span className={fieldLabel}>Metadata</span>
+          {metadata.length ? (
+            <div className="flex flex-wrap gap-[5px]">
+              {metadata.map(([mk, mv]) => (
+                <span key={mk} className={labelChipClass}>
+                  {mk}: {typeof mv === "string" ? mv : JSON.stringify(mv)}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-[12.5px] text-[var(--text-3)]">—</span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

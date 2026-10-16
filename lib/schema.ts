@@ -128,6 +128,17 @@ export const beadSchema = z
     comment_count: z.number().optional(),
     parent: z.string().nullable().optional(),
     /**
+     * Planning/reference fields `bd export --json` emits when set (verified
+     * against bd 1.3.0). Read-only in the UI for now; listed here because zod
+     * strips unknown keys and the detail drawer can opt into showing them.
+     */
+    due_at: z.string().optional().nullable(),
+    defer_until: z.string().optional().nullable(),
+    estimated_minutes: z.coerce.number().optional().nullable(),
+    external_ref: z.string().optional().nullable(),
+    spec_id: z.string().optional().nullable(),
+    metadata: z.record(z.string(), z.unknown()).optional().nullable(),
+    /**
      * Gate sub-type from `bd gate create --type <t>` (human | timer | gh:run |
      * gh:pr | bead). Present only on issue_type "gate". Preserved here — zod
      * strips unknown keys — so the UI can surface human-approval gates that are
