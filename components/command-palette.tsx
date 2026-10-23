@@ -291,9 +291,11 @@ function PaletteBody({
 
         {page === "projects" && (
           <Command.Group heading="Switch project">
-            <Item icon="logo" value="project demo" onSelect={() => run(() => router.push("/p/demo"))}>
-              Demo{projectId === "demo" ? " · current" : ""}
-            </Item>
+            {projects.some((p) => p.id === "demo") && (
+              <Item icon="logo" value="project demo" onSelect={() => run(() => router.push("/p/demo"))}>
+                Demo{projectId === "demo" ? " · current" : ""}
+              </Item>
+            )}
             {projects
               .filter((p) => p.id !== "demo")
               .map((p) => (

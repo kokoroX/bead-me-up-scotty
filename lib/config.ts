@@ -74,6 +74,11 @@ export function isReadOnly(request?: Request): boolean {
   return v === "1" || v === "true";
 }
 
+export function isDemoHidden(): boolean {
+  const v = process.env.SCOTTY_HIDE_DEMO;
+  return v === "1" || v === "true";
+}
+
 /**
  * Focus-view lane chips: SCOTTY_LANE_PREFIX names a label prefix (e.g. "ctx:")
  * whose values partition work into lanes/teams/areas. When set, the Focus view

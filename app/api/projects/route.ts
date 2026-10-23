@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { listProjects, addProject, DEMO_PROJECT } from "@/lib/config";
+import { listProjects, addProject, DEMO_PROJECT, isDemoHidden } from "@/lib/config";
 import type { ProjectEntry, DemoProject } from "@/lib/config";
 import { ok, fail } from "@/lib/api";
 import { z } from "zod";
@@ -20,7 +20,10 @@ function annotate(p: ProjectEntry | DemoProject) {
 }
 
 export async function GET() {
-  const projects = [DEMO_PROJECT, ...listProjects()].map(annotate);
+  const projects = [
+    ...(isDemoHidden() ? [] : [DEMO_PROJECT]),
+    ...listProjects(),
+  ].map(annotate);
   return ok({ projects });
 }
 

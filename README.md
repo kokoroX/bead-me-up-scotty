@@ -170,6 +170,9 @@ npm run dev            # http://localhost:3000
   against an in-memory dataset seeded from the design export — so you can explore
   every feature without beads. The sidebar shows which mode is active.
 
+Set `SCOTTY_HIDE_DEMO=1` (or `true`) to remove the built-in Demo project from the
+launcher and project switchers. Visiting `/p/demo` directly still works.
+
 Set the human actor / allowlist, repo path, and theme in **Settings** (stored
 under your OS config dir, not in beads).
 
