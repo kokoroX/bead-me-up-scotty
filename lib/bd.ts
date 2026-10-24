@@ -12,6 +12,9 @@ import {
   type DepType,
 } from "./schema";
 import type { BeadsStore, DoctorInfo } from "./store";
+import { listFromDolt, readDoltTarget } from "./dolt-list";
+
+const doltWarningTimes = new Map<string, number>();
 
 const pExecFile = promisify(execFile);
 const BD_BIN = process.env.BD_BIN || "bd";
@@ -155,9 +158,24 @@ export function createBdStore(repoPath: string): BeadsStore {
       // Dedupe concurrent callers onto one in-flight export, and serialize that
       // export with all other bd ops so reads can't collide with writes/compaction.
       if (inflightList) return inflightList;
-      inflightList = serializeWrite(repoPath, async () =>
-        parseExport(await runBdRaw(["export", "--json"], ro)),
-      );
+      inflightList = serializeWrite(repoPath, async () => {
+        if (process.env.SCOTTY_DOLT_DIRECT !== "0") {
+          const target = readDoltTarget(repoPath);
+          if (target) {
+            try {
+              return await listFromDolt(target);
+            } catch (error) {
+              const now = Date.now();
+              const lastWarning = doltWarningTimes.get(repoPath);
+              if (lastWarning === undefined || now - lastWarning >= 5 * 60 * 1000) {
+                doltWarningTimes.set(repoPath, now);
+                console.warn(`Dolt direct list failed for ${repoPath}; falling back to bd export`, error);
+              }
+            }
+          }
+        }
+        return parseExport(await runBdRaw(["export", "--json"], ro));
+      });
       try {
         return await inflightList;
       } finally {
