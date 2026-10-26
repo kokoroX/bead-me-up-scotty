@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { agentType, createCityAgentsCache, parseRigMap, polecatPoolName, toProjectAgents } from "../lib/gascity-agents.ts";
+import { agentType, createCityAgentsCache, parseAgentOutputQuery, parseRigMap, polecatPoolName, rigForProject, toAgentOutput, toProjectAgents } from "../lib/gascity-agents.ts";
 
 const rig = "jikerental";
 const agent = (name, extra = {}) => ({ name: `${rig}/${name}`, rig, ...extra });
@@ -42,6 +42,8 @@ const [full] = toProjectAgents({ items: [agent("backend.furiosa", {
   provider: "claude",
   active_bead: "jkr-y124",
   unavailable_reason: "agent is suspended",
+  context_pct: 42.5,
+  context_window: 200_000,
   session: { name: "session-name", last_activity: lastActivity, attached: false },
   future_field: "ignored",
 })] }, rig);
@@ -58,6 +60,8 @@ assert.deepEqual(full, {
   lastActivity,
   activeBead: "jkr-y124",
   unavailableReason: "agent is suspended",
+  contextPct: 42.5,
+  contextWindow: 200_000,
 });
 // The view strips the rig prefix; the model preserves the upstream pool value.
 const displayPool = (pool) => pool?.startsWith(`${rig}/`) ? pool.slice(rig.length + 1) : pool;
@@ -88,10 +92,12 @@ assert.deepEqual(minimal, {
   name: "jikerental/minimal", shortName: "minimal", pool: null, state: "unknown",
   running: false, suspended: false, activity: null, model: null, provider: null,
   lastActivity: null, activeBead: null, unavailableReason: null,
+  contextPct: null, contextWindow: null,
 });
 const [nullable] = toProjectAgents({ items: [agent("nullable", {
   pool: null, state: null, running: null, suspended: null, activity: null,
   model: null, provider: null, active_bead: null, unavailable_reason: null, session: null,
+  context_pct: null, context_window: null,
 })] }, rig);
 assert.deepEqual(nullable, { ...minimal, name: "jikerental/nullable", shortName: "nullable" });
 assert.equal(toProjectAgents({ items: [agent("session", { session: {} })] }, rig)[0].lastActivity, null);
@@ -168,4 +174,53 @@ assert.equal(await validRetry, rawCity);
 assert.equal(await loadCity(cityUrl), rawCity);
 assert.equal(loads.length, 7);
 
-console.log("PASS: rig filtering, running/state/name sorting, field normalization, pool prefixes, system/polecat classification, response validation, rig map parsing, and city cache TTL/concurrency/isolation/recovery");
+assert.equal(rigForProject("project", parseRigMap("project=mapped")), "mapped");
+assert.equal(rigForProject("other", parseRigMap("project=mapped")), "other");
+assert.equal(rigForProject("toString", {}), "toString");
+
+const outputTurn = { id: "turn-1", role: "assistant", text: "Plain <b>text</b>", timestamp: lastActivity };
+assert.deepEqual(toAgentOutput({
+  format: "structured",
+  turns: [{ ...outputTurn, future_field: true }],
+  pagination: { has_older_messages: true, total_message_count: 25, returned_message_count: 1 },
+}), {
+  format: "structured",
+  turns: [outputTurn],
+  pagination: { hasOlder: true, total: 25 },
+});
+assert.deepEqual(toAgentOutput({ format: "text", turns: [{ role: "user", text: "hello" }] }), {
+  format: "text", turns: [{ role: "user", text: "hello" }],
+  pagination: { hasOlder: false, total: null },
+});
+assert.deepEqual(toAgentOutput({ format: "structured", turns: [], pagination: {} }).turns, []);
+for (const raw of [null, {}, { format: "text" }, { format: 4, turns: [] },
+  { format: "text", turns: null }, { format: "text", turns: {} },
+  { format: "text", turns: [{ role: "user" }] },
+  { format: "text", turns: [{ role: 3, text: "bad" }] },
+  { format: "text", turns: [{ role: "user", text: "bad", id: 3 }] },
+  { format: "text", turns: [], pagination: { has_older_messages: "yes" } },
+  { format: "text", turns: [], pagination: { returned_message_count: "3" } },
+  { format: "text", turns: [], pagination: null }]) {
+  assert.throws(() => toAgentOutput(raw), "invalid output, including missing turns, must throw");
+}
+assert.equal(toProjectAgents({ items: [agent("zero", { context_pct: 0, context_window: 0 })] }, rig)[0].contextPct, 0);
+assert.throws(() => toProjectAgents({ items: [agent("bad", { context_pct: "40" })] }, rig));
+assert.throws(() => toProjectAgents({ items: [agent("bad", { context_window: "200000" })] }, rig));
+
+assert.deepEqual(parseAgentOutputQuery({ agent: "backend.furiosa" }), { agent: "backend.furiosa" });
+assert.deepEqual(parseAgentOutputQuery({ agent: "A_0-1.test", before: "turn-123", tail: "0" }), {
+  agent: "A_0-1.test", before: "turn-123", tail: 0,
+});
+assert.equal(parseAgentOutputQuery({ agent: "a", tail: "50" }).tail, 50);
+assert.equal(parseAgentOutputQuery({ agent: "a", before: "a".repeat(128) }).before.length, 128);
+for (const invalid of [undefined, null, "", "../agent", "rig/agent", "_agent", "-agent", "a b", "a?x=1", "a\\nb"]) {
+  assert.throws(() => parseAgentOutputQuery({ agent: invalid }));
+}
+for (const before of ["", "a".repeat(129), "../turn", "turn_1", "turn.1", "a/b", "a b"]) {
+  assert.throws(() => parseAgentOutputQuery({ agent: "a", before }));
+}
+for (const tail of ["", "-1", "51", "1.5", "NaN", "Infinity", " 1", "1e1", "1x"]) {
+  assert.throws(() => parseAgentOutputQuery({ agent: "a", tail }));
+}
+
+console.log("PASS: agents normalization/context fields, rig mapping, grouping, city cache, output schema/camelCase pagination, and agent/before/tail validation");

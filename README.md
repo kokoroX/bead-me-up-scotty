@@ -213,6 +213,7 @@ Open **Agents** in a project to view its Gas City rig's agents, refreshed every
 15 seconds. Known active beads open their detail drawer, which also shows the
 agents assigned to that bead. This integration is read-only: Scotty sends only
 GET requests to Gas City and never changes agents or their work.
+The read-only `GET /api/p/{projectId}/agents/output?agent=<shortName>&before=<id>&tail=<0-50>` endpoint serves validated transcript pages (15-second timeout); the selected running agent's conversation refreshes every 10 seconds.
 
 - `GASCITY_API_URL`: Gas City API base URL (for example, `http://localhost:8080`).
   There is no default; when unset, the Agents view shows a configuration hint.

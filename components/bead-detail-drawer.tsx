@@ -24,6 +24,7 @@ import { DetailFieldsMenu } from "@/components/detail-fields";
 import { useDetailFields } from "@/hooks/use-detail-fields";
 import { useAgents } from "@/hooks/use-agents";
 import { useUrlState } from "@/hooks/use-url-state";
+import { agentStateClasses } from "@/lib/agent-state";
 import type { GascityAgent } from "@/lib/gascity-agents";
 import {
   DETAIL_FIELDS,
@@ -547,6 +548,7 @@ function DrawerBody({
                         className="flex items-center gap-[9px] rounded-[9px] border border-[var(--brand)]/40 bg-[var(--brand-weak)] p-[9px_11px]"
                       >
                         <span
+                          data-state={agent.state}
                           className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${tone.dot} ${
                             tone.pulse ? "animate-pulse motion-reduce:animate-none" : ""
                           }`}
@@ -1275,29 +1277,6 @@ function Header({ icon, label, count }: { icon: string; label: string; count?: n
   );
 }
 
-/** Working agents get the brand accent; busy-but-idle a step down; the rest grey. */
-function agentStateClasses(state: string): { dot: string; chip: string; pulse: boolean } {
-  if (state === "working") {
-    return {
-      dot: "bg-[var(--brand)]",
-      chip: "border-[var(--brand)]/40 bg-[var(--brand-weak)] text-[var(--brand)]",
-      pulse: true,
-    };
-  }
-  if (state === "waiting" || state === "idle") {
-    return {
-      dot: "bg-[var(--text-2)]",
-      chip: "border-border bg-[var(--surface-2)] text-[var(--text-2)]",
-      pulse: false,
-    };
-  }
-  return {
-    dot: "bg-[var(--text-3)]",
-    chip: "border-border bg-[var(--surface-2)] text-[var(--text-3)]",
-    pulse: false,
-  };
-}
-
 function AgentBadge({
   agents,
   onOpen,
@@ -1312,11 +1291,13 @@ function AgentBadge({
     <button
       type="button"
       data-testid="bead-agent-badge"
+      data-state={primary.state}
       title={`${primary.name} · ${primary.state} — View in Agents`}
       onClick={() => onOpen(primary.name)}
       className={`inline-flex flex-shrink-0 items-center gap-[5px] rounded-full border px-2 py-px text-[10.5px] font-semibold transition-colors hover:border-[var(--brand)] ${tone.chip}`}
     >
       <span
+        data-state={primary.state}
         className={`h-[6px] w-[6px] flex-shrink-0 rounded-full ${tone.dot} ${
           tone.pulse ? "animate-pulse motion-reduce:animate-none" : ""
         }`}
