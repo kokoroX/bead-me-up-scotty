@@ -7,7 +7,7 @@ import {
 import { toast } from "sonner";
 import { toastError } from "@/components/error-toast";
 import { api, type BeadsResponse } from "@/lib/api-client";
-import type { Bead, CreateInput, UpdateInput, DepType } from "@/lib/schema";
+import type { Bead, BeadRef, CreateInput, UpdateInput, DepType } from "@/lib/schema";
 import { useApp } from "@/components/app-context";
 
 /** Query key is scoped per project so tabs on different projects never collide. */
@@ -104,7 +104,7 @@ export function useCreateBead() {
   const { projectId } = useApp();
   const qc = useQueryClient();
   return useMutation(
-    mutationToast<CreateInput, Bead>(
+    mutationToast<CreateInput, BeadRef>(
       (input) => api.create(projectId, input),
       (_a, res) => `Created ${res.id} · bd create`,
       qc,
@@ -117,7 +117,7 @@ export function useUpdateBead() {
   const { projectId } = useApp();
   const qc = useQueryClient();
   return useMutation(
-    mutationToast<{ id: string; patch: UpdateInput }, Bead>(
+    mutationToast<{ id: string; patch: UpdateInput }, BeadRef>(
       ({ id, patch }) => api.update(projectId, id, patch),
       () => "Updated · bd update",
       qc,
@@ -143,7 +143,7 @@ export function useAddComment() {
   const { projectId } = useApp();
   const qc = useQueryClient();
   return useMutation(
-    mutationToast<{ id: string; text: string }, Bead>(
+    mutationToast<{ id: string; text: string }, BeadRef>(
       ({ id, text }) => api.addComment(projectId, id, text),
       () => "Comment added",
       qc,
@@ -156,7 +156,7 @@ export function useAddDep() {
   const { projectId } = useApp();
   const qc = useQueryClient();
   return useMutation(
-    mutationToast<{ id: string; dependsOnId: string; type: DepType }, Bead>(
+    mutationToast<{ id: string; dependsOnId: string; type: DepType }, BeadRef>(
       ({ id, dependsOnId, type }) => api.addDep(projectId, id, dependsOnId, type),
       () => "Dependency added · bd dep add",
       qc,
@@ -169,7 +169,7 @@ export function useRemoveDep() {
   const { projectId } = useApp();
   const qc = useQueryClient();
   return useMutation(
-    mutationToast<{ id: string; dependsOnId: string }, Bead>(
+    mutationToast<{ id: string; dependsOnId: string }, BeadRef>(
       ({ id, dependsOnId }) => api.removeDep(projectId, id, dependsOnId),
       () => "Dependency removed · bd dep remove",
       qc,
@@ -183,7 +183,7 @@ export function useCreateGate() {
   const { projectId } = useApp();
   const qc = useQueryClient();
   return useMutation(
-    mutationToast<{ id: string; reason?: string }, Bead>(
+    mutationToast<{ id: string; reason?: string }, BeadRef>(
       ({ id, reason }) => api.createGate(projectId, id, reason),
       (_a, res) => `Created approval gate ${res.id} · bd gate create`,
       qc,
@@ -197,7 +197,7 @@ export function useRespondHuman() {
   const { projectId } = useApp();
   const qc = useQueryClient();
   return useMutation(
-    mutationToast<{ id: string; text: string }, Bead>(
+    mutationToast<{ id: string; text: string }, BeadRef>(
       ({ id, text }) => api.human.respond(projectId, id, text),
       (a) => `Responded to ${a.id}`,
       qc,
@@ -210,7 +210,7 @@ export function useDismissHuman() {
   const { projectId } = useApp();
   const qc = useQueryClient();
   return useMutation(
-    mutationToast<{ id: string }, Bead>(
+    mutationToast<{ id: string }, BeadRef>(
       ({ id }) => api.human.dismiss(projectId, id),
       (a) => `Dismissed ${a.id}`,
       qc,
@@ -223,7 +223,7 @@ export function useArchiveBead() {
   const { projectId } = useApp();
   const qc = useQueryClient();
   return useMutation(
-    mutationToast<string, Bead>(
+    mutationToast<string, BeadRef>(
       (id) => api.archive(projectId, id),
       (id) => `Archived ${id} · bd close + label`,
       qc,

@@ -1,4 +1,4 @@
-import type { Bead, CreateInput, UpdateInput, DepType } from "./schema";
+import type { Bead, BeadRef, CreateInput, UpdateInput, DepType } from "./schema";
 import type { UpdateStatus, UpdateResult, UpdateChannel, UpdateTarget } from "./update-types";
 
 export interface Meta {
@@ -162,41 +162,41 @@ export const api = {
   list: (projectId: string) => request<BeadsResponse>(`${base(projectId)}/beads`),
   get: (projectId: string, id: string) => request<Bead>(`${base(projectId)}/beads/${enc(id)}`),
   create: (projectId: string, input: CreateInput) =>
-    request<Bead>(`${base(projectId)}/beads`, { method: "POST", body: JSON.stringify(input) }),
+    request<BeadRef>(`${base(projectId)}/beads`, { method: "POST", body: JSON.stringify(input) }),
   update: (projectId: string, id: string, patch: UpdateInput) =>
-    request<Bead>(`${base(projectId)}/beads/${enc(id)}`, {
+    request<BeadRef>(`${base(projectId)}/beads/${enc(id)}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
   setStatus: (projectId: string, id: string, status: string, reason?: string) =>
-    request<Bead>(`${base(projectId)}/beads/${enc(id)}/status`, {
+    request<BeadRef>(`${base(projectId)}/beads/${enc(id)}/status`, {
       method: "POST",
       body: JSON.stringify({ status, reason }),
     }),
   remove: (projectId: string, id: string) =>
     request<{ deleted: string }>(`${base(projectId)}/beads/${enc(id)}`, { method: "DELETE" }),
   addComment: (projectId: string, id: string, text: string) =>
-    request<Bead>(`${base(projectId)}/beads/${enc(id)}/comments`, {
+    request<BeadRef>(`${base(projectId)}/beads/${enc(id)}/comments`, {
       method: "POST",
       body: JSON.stringify({ text }),
     }),
   addDep: (projectId: string, id: string, depends_on_id: string, type: DepType) =>
-    request<Bead>(`${base(projectId)}/beads/${enc(id)}/deps`, {
+    request<BeadRef>(`${base(projectId)}/beads/${enc(id)}/deps`, {
       method: "POST",
       body: JSON.stringify({ depends_on_id, type }),
     }),
   removeDep: (projectId: string, id: string, depends_on_id: string) =>
-    request<Bead>(`${base(projectId)}/beads/${enc(id)}/deps`, {
+    request<BeadRef>(`${base(projectId)}/beads/${enc(id)}/deps`, {
       method: "DELETE",
       body: JSON.stringify({ depends_on_id }),
     }),
   createGate: (projectId: string, id: string, reason?: string) =>
-    request<Bead>(`${base(projectId)}/beads/${enc(id)}/gate`, {
+    request<BeadRef>(`${base(projectId)}/beads/${enc(id)}/gate`, {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
   archive: (projectId: string, id: string) =>
-    request<Bead>(`${base(projectId)}/beads/${enc(id)}/archive`, { method: "POST" }),
+    request<BeadRef>(`${base(projectId)}/beads/${enc(id)}/archive`, { method: "POST" }),
   doctor: (projectId: string) => request<DoctorResponse>(`${base(projectId)}/doctor`),
 
   activity: (projectId: string) => request<ActivityResponse>(`${base(projectId)}/activity`),
@@ -213,12 +213,12 @@ export const api = {
   // Act on a "Needs You" (human-labelled) bead, mirroring `bd human`.
   human: {
     respond: (projectId: string, id: string, text: string) =>
-      request<Bead>(`${base(projectId)}/beads/${enc(id)}/human`, {
+      request<BeadRef>(`${base(projectId)}/beads/${enc(id)}/human`, {
         method: "POST",
         body: JSON.stringify({ action: "respond", text }),
       }),
     dismiss: (projectId: string, id: string) =>
-      request<Bead>(`${base(projectId)}/beads/${enc(id)}/human`, {
+      request<BeadRef>(`${base(projectId)}/beads/${enc(id)}/human`, {
         method: "POST",
         body: JSON.stringify({ action: "dismiss" }),
       }),

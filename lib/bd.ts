@@ -214,7 +214,7 @@ export function createBdStore(repoPath: string): BeadsStore {
         if (input.backlog) {
           await runBdRaw(["update", id, "-s", "deferred"], rw(actor));
         }
-        return show(id);
+        return { id };
       });
     },
 
@@ -245,7 +245,7 @@ export function createBdStore(repoPath: string): BeadsStore {
         // `bd update <id>` with no field flags is a no-op error; skip the call
         // when clearing labels on a bead that had none.
         if (args.length > 2) await runBdRaw(args, rw(actor));
-        return show(id);
+        return { id };
       });
     },
 
@@ -262,7 +262,7 @@ export function createBdStore(repoPath: string): BeadsStore {
         } else {
           await runBdRaw(["update", id, "-s", status], rw(actor));
         }
-        return show(id);
+        return { id };
       });
     },
 
@@ -275,21 +275,21 @@ export function createBdStore(repoPath: string): BeadsStore {
     addComment(id, text, actor) {
       return serializeWrite(repoPath, async () => {
         await runBdRaw(["comment", id, text], rw(actor));
-        return show(id);
+        return { id };
       });
     },
 
     addDep(id, dependsOnId, type: DepType, actor) {
       return serializeWrite(repoPath, async () => {
         await runBdRaw(["dep", "add", id, dependsOnId, "-t", type], rw(actor));
-        return show(id);
+        return { id };
       });
     },
 
     removeDep(id, dependsOnId, actor) {
       return serializeWrite(repoPath, async () => {
         await runBdRaw(["dep", "remove", id, dependsOnId], rw(actor));
-        return show(id);
+        return { id };
       });
     },
 
@@ -299,14 +299,14 @@ export function createBdStore(repoPath: string): BeadsStore {
         if (reason) args.push("--reason", reason);
         // `bd gate create --json` returns the created gate object (incl. its id).
         const created = await runBdJson<{ id: string }>(args, rw(actor));
-        return show(created.id);
+        return { id: created.id };
       });
     },
 
     removeLabel(id, label, actor) {
       return serializeWrite(repoPath, async () => {
         await runBdRaw(["update", id, "--remove-label", label], rw(actor));
-        return show(id);
+        return { id };
       });
     },
 
@@ -314,7 +314,7 @@ export function createBdStore(repoPath: string): BeadsStore {
       return serializeWrite(repoPath, async () => {
         await runBdRaw(["close", id], rw(actor));
         await runBdRaw(["label", "add", id, "archived"], rw(actor));
-        return show(id);
+        return { id };
       });
     },
 

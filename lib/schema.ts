@@ -148,6 +148,11 @@ export const beadSchema = z
   });
 export type Bead = z.infer<typeof beadSchema>;
 
+/** Return value for mutation interfaces. */
+export interface BeadRef {
+  id: string;
+}
+
 export const beadArraySchema = z.array(beadSchema);
 
 /** bd --json envelope: { schema_version, data } (BD_JSON_ENVELOPE=1). */
