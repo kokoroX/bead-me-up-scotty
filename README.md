@@ -207,6 +207,24 @@ from the banner. This is a local viewing preference, not a permissions system.
 Project write requests are rejected by the server while the requesting browser
 is read-only; application settings remain available.
 
+### Gas City agents
+
+Open **Agents** in a project to view its Gas City rig's agents, refreshed every
+15 seconds. Known active beads open their detail drawer, which also shows the
+agents assigned to that bead. This integration is read-only: Scotty sends only
+GET requests to Gas City and never changes agents or their work.
+
+- `GASCITY_API_URL`: Gas City API base URL (for example, `http://localhost:8080`).
+  There is no default; when unset, the Agents view shows a configuration hint.
+- `GASCITY_CITY`: city name, default `city`.
+- `SCOTTY_GASCITY_RIGS`: optional comma-separated project-to-rig mappings, such as
+  `backend-project=jikerental,frontend-project=frontend`. Whitespace is trimmed;
+  empty or malformed pairs are ignored. Unmapped projects use their project id
+  as the rig name.
+
+Set these environment variables when launching Scotty. Gas City requests time out
+after five seconds; failures appear in the Agents view.
+
 ### Docker
 
 ```bash

@@ -22,6 +22,7 @@ import { bold, italic, link } from "@/lib/markdown-edit";
 import { AiAssistPanel } from "@/components/ai-assist-panel";
 import { DetailFieldsMenu } from "@/components/detail-fields";
 import { useDetailFields } from "@/hooks/use-detail-fields";
+import { useAgents } from "@/hooks/use-agents";
 import {
   DETAIL_FIELDS,
   fmtEstimate,
@@ -205,6 +206,10 @@ function DrawerBody({
   const actor = meta?.humanActor ?? "you";
   const isDemo = meta?.kind === "demo";
   const { visible: show } = useDetailFields();
+  const { data: agentData, error: agentError } = useAgents(projectId);
+  const activeAgents = !agentError && !agentData?.malformed && Array.isArray(agentData?.agents)
+    ? agentData.agents.filter((agent) => agent.activeBead === bead.id)
+    : [];
 
   const update = useUpdateBead();
   const setStatus = useSetStatus();
@@ -512,6 +517,16 @@ function DrawerBody({
               </label>
             )}
             {show.assignee && <AssigneeField bead={bead} />}
+            {activeAgents.length > 0 && (
+              <div data-testid="bead-agents" className="flex flex-col gap-[5px]">
+                <span className={fieldLabel}>Agent</span>
+                <div className="flex flex-wrap gap-2 rounded-[9px] border border-border bg-[var(--surface-2)] px-[10px] py-2 text-[12.5px] text-[var(--text-2)]">
+                  {activeAgents.map((agent) => (
+                    <span key={agent.name}>{agent.shortName} · {agent.state}</span>
+                  ))}
+                </div>
+              </div>
+            )}
             {show.parent && (
               <div className="flex flex-col gap-[5px]">
                 {/* Labelled by what the parent actually IS. Only epics get routed to
