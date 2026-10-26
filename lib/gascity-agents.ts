@@ -12,6 +12,8 @@ const agentSchema = z.object({
   provider: z.string().nullable().optional(),
   active_bead: z.string().nullable().optional(),
   unavailable_reason: z.string().nullable().optional(),
+  context_pct: z.number().nullable().optional(),
+  context_window: z.number().nullable().optional(),
   session: z.object({
     last_activity: z.string().nullable().optional(),
   }).passthrough().nullable().optional(),
@@ -36,6 +38,8 @@ export interface GascityAgent {
   lastActivity: string | null;
   activeBead: string | null;
   unavailableReason: string | null;
+  contextPct: number | null;
+  contextWindow: number | null;
 }
 
 function stateOrder(state: string): number {
@@ -85,6 +89,8 @@ export function toProjectAgents(raw: unknown, rig: string): GascityAgent[] {
     lastActivity: agent.session?.last_activity ?? null,
     activeBead: agent.active_bead ?? null,
     unavailableReason: agent.unavailable_reason ?? null,
+    contextPct: agent.context_pct ?? null,
+    contextWindow: agent.context_window ?? null,
   })).sort((a, b) =>
     Number(b.running) - Number(a.running) ||
     stateOrder(a.state) - stateOrder(b.state) ||
@@ -128,4 +134,95 @@ export function parseRigMap(value: string | undefined): Record<string, string> {
     const parts = entry.split("=").map((part) => part.trim());
     return parts.length === 2 && parts[0] && parts[1] ? [[parts[0], parts[1]]] : [];
   }));
+}
+
+/** Resolve a project's rig: an explicit rig-map entry, otherwise the project id. */
+export function rigForProject(projectId: string, rigs: Record<string, string>): string {
+  return Object.hasOwn(rigs, projectId) ? rigs[projectId] : projectId;
+}
+
+const outputTurnSchema = z.object({
+  id: z.string().optional(),
+  role: z.string(),
+  text: z.string(),
+  timestamp: z.string().optional(),
+}).passthrough();
+
+const outputSchema = z.object({
+  format: z.string(),
+  turns: z.array(outputTurnSchema),
+  pagination: z.object({
+    has_older_messages: z.boolean().optional(),
+    total_message_count: z.number().optional(),
+    returned_message_count: z.number().optional(),
+  }).passthrough().optional(),
+}).passthrough();
+
+/** One message in an agent's transcript. */
+export interface AgentTurn {
+  id?: string;
+  role: string;
+  text: string;
+  timestamp?: string;
+}
+
+/** Normalized transcript page returned to the browser. */
+export interface AgentOutput {
+  format: string;
+  turns: AgentTurn[];
+  pagination: {
+    hasOlder: boolean;
+    total: number | null;
+  };
+}
+
+/** Validate a Gas City agent-output response and camel-case its pagination. */
+export function toAgentOutput(raw: unknown): AgentOutput {
+  const parsed = outputSchema.parse(raw);
+  return {
+    format: parsed.format,
+    turns: parsed.turns.map((turn) => ({
+      ...(turn.id !== undefined ? { id: turn.id } : {}),
+      role: turn.role,
+      text: turn.text,
+      ...(turn.timestamp !== undefined ? { timestamp: turn.timestamp } : {}),
+    })),
+    pagination: {
+      hasOlder: parsed.pagination?.has_older_messages ?? false,
+      total: parsed.pagination?.total_message_count ?? null,
+    },
+  };
+}
+
+/** Validated query for the agent-output route. */
+export interface AgentOutputQuery {
+  agent: string;
+  before?: string;
+  tail?: number;
+}
+
+/**
+ * Validate and normalize the agent-output query string. Agent names and
+ * cursors are restricted to the characters Gas City identifiers use.
+ */
+export function parseAgentOutputQuery(params: {
+  agent?: string | null;
+  before?: string | null;
+  tail?: string | null;
+}): AgentOutputQuery {
+  const agent = params.agent ?? "";
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(agent)) {
+    throw new Error("agent must match ^[A-Za-z0-9][A-Za-z0-9._-]*$");
+  }
+  const before = params.before ?? undefined;
+  if (before !== undefined && !/^[A-Za-z0-9-]{1,128}$/.test(before)) {
+    throw new Error("before must be 1-128 letters, digits or dashes");
+  }
+  let tail: number | undefined;
+  if (params.tail !== undefined && params.tail !== null) {
+    if (!/^\d+$/.test(params.tail)) throw new Error("tail must be an integer from 0 to 50");
+    tail = Number(params.tail);
+    if (tail > 50) throw new Error("tail must be an integer from 0 to 50");
+  }
+  return { agent, ...(before !== undefined ? { before } : {}), ...(tail !== undefined ? { tail } : {}) };
 }

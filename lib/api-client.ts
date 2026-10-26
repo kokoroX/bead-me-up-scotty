@@ -1,5 +1,5 @@
 import type { Bead, BeadRef, CreateInput, UpdateInput, DepType } from "./schema";
-import type { GascityAgent } from "./gascity-agents";
+import type { AgentTurn, GascityAgent } from "./gascity-agents";
 import type { UpdateStatus, UpdateResult, UpdateChannel, UpdateTarget } from "./update-types";
 
 export interface Meta {
@@ -39,6 +39,15 @@ export interface AgentsResponse {
   configured: boolean;
   rig?: string;
   agents: GascityAgent[];
+}
+
+/** One page of a Gas City agent transcript, normalized for the browser. */
+export interface AgentOutputResponse {
+  configured: boolean;
+  available: boolean;
+  format: string;
+  turns: AgentTurn[];
+  pagination: { hasOlder: boolean; total: number | null };
 }
 
 export interface InsightsData {
@@ -217,6 +226,26 @@ export const api = {
       malformed: !Array.isArray(data?.agents) || typeof data?.configured !== "boolean",
       configured: typeof data?.configured === "boolean" ? data.configured : false,
       agents: Array.isArray(data?.agents) ? data.agents : [],
+    };
+  },
+
+  /** One transcript page for a Gas City agent; `before` asks for older turns. */
+  agentOutput: async (projectId: string, agent: string, before?: string): Promise<AgentOutputResponse> => {
+    const params = new URLSearchParams({ agent });
+    if (before) params.set("before", before);
+    const data = await request<Partial<AgentOutputResponse> | null>(
+      `${base(projectId)}/agents/output?${params.toString()}`,
+    );
+    const pagination = data?.pagination;
+    return {
+      configured: typeof data?.configured === "boolean" ? data.configured : false,
+      available: typeof data?.available === "boolean" ? data.available : false,
+      format: typeof data?.format === "string" ? data.format : "text",
+      turns: Array.isArray(data?.turns) ? data.turns : [],
+      pagination: {
+        hasOlder: typeof pagination?.hasOlder === "boolean" ? pagination.hasOlder : false,
+        total: typeof pagination?.total === "number" ? pagination.total : null,
+      },
     };
   },
 

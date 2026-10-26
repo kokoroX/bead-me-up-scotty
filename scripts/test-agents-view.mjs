@@ -1,4 +1,4 @@
-// Read-only agents regression: project responses use fixed fixtures throughout.
+// Read-only agents regression: project and transcript responses use fixed fixtures.
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
@@ -29,22 +29,45 @@ const agent = (shortName, extra = {}) => ({
   lastActivity: "2026-10-26T11:56:16+08:00",
   activeBead: null,
   unavailableReason: null,
+  contextPct: null,
+  contextWindow: null,
   ...extra,
 });
 const systemAgent = (shortName, extra = {}) => agent(shortName, { pool: null, ...extra });
 const agents = [
-  agent("backend.furiosa", { activeBead: bead.id }),
+  agent("backend.furiosa", { activeBead: bead.id, contextPct: 42, contextWindow: 200_000 }),
   agent("backend.wisp-worker", { state: "waiting", activeBead: "jkr-wisp-az4g" }),
   agent("backend.stopped", { state: "stopped", running: false, activity: null }),
   agent("backend.suspended", { state: "suspended", running: false, suspended: true, unavailableReason: "agent is suspended", activeBead: bead.id }),
-  agent("miniapp.worker", { pool: "jikerental/miniapp.polecat" }),
+  agent("miniapp.worker", { pool: "jikerental/miniapp.polecat", state: "idle" }),
   agent("miniapp.stopped", { pool: "jikerental/miniapp.polecat", state: "stopped", running: false, activity: null }),
   agent("ledger.stopped", { pool: "jikerental/ledger.polecat", state: "stopped", running: false, activity: null, activeBead: bead.id }),
   systemAgent("mayor", { state: "working" }),
   systemAgent("witness", { state: "stopped", running: false, activity: null }),
 ];
+const resultText = "Fixture tool output with several lines of useful information. ".repeat(3);
+const transcript = {
+  configured: true,
+  available: true,
+  format: "structured",
+  turns: [
+    { id: "turn-2", role: "assistant", text: "[thinking] Private fixture thought" },
+    { id: "turn-3", role: "assistant", text: "[Read]" },
+    { id: "turn-4", role: "user", text: `[result] ${resultText}` },
+    { id: "turn-5", role: "assistant", text: "Plain fixture text <b>never HTML</b>\nSecond line" },
+  ],
+  pagination: { hasOlder: true, total: 5 },
+};
+const olderTranscript = {
+  ...transcript,
+  turns: [{ id: "turn-1", role: "user", text: "An earlier fixture request" }],
+  pagination: { hasOlder: false, total: 5 },
+};
 let response = { configured: true, rig: "jikerental", agents };
 let status = 200;
+let outputResponse = transcript;
+let outputStatus = 200;
+const outputRequests = [];
 const writes = [];
 const browser = await chromium.launch();
 let page;
@@ -68,44 +91,87 @@ try {
     if (path.endsWith(`/beads/${bead.id}`)) return route.fulfill({ json: bead });
     return route.fulfill({ json: {} });
   });
+  await page.route("**/agents/output**", async (route) => {
+    const request = route.request();
+    if (request.method() !== "GET") {
+      writes.push({ method: request.method(), path: new URL(request.url()).pathname });
+      return route.abort();
+    }
+    const params = new URL(request.url()).searchParams;
+    outputRequests.push(Object.fromEntries(params));
+    if (params.has("before")) {
+      assert.equal(params.get("before"), "turn-2", "older pages use the first turn's id");
+      return route.fulfill({ json: olderTranscript });
+    }
+    return route.fulfill({ status: outputStatus, json: outputResponse });
+  });
 
   const url = new URL("/p/demo", base);
   url.searchParams.set("view", "agents");
   await page.goto(url.href);
   const main = page.getByRole("main");
+  const detail = main.getByTestId("agent-detail");
+  const conversation = detail.getByTestId("agent-conversation");
+  const row = (name) => main.locator(`[data-agent-name="jikerental/${name}"]`);
   await main.getByRole("heading", { name: "Agents", exact: true }).waitFor();
+  await detail.getByRole("heading", { name: agents[0].shortName, exact: true }).waitFor();
+  const stateChip = (state) =>
+    detail.locator(`[data-state="${state}"]`).filter({ hasText: state });
+  const workingStateColor = await stateChip("working").evaluate((node) => getComputedStyle(node).color);
+  await page.waitForFunction((name) => new URL(location.href).searchParams.get("agent") === name, agents[0].name);
+  assert.equal(await row(agents[0].shortName).getAttribute("aria-current"), "true", "first working agent is selected");
+  await conversation.getByTestId("agent-turn").first().waitFor();
+  assert.equal(outputRequests[0].agent, agents[0].shortName, "output requests use the short name");
+  assert.match(await detail.getByTestId("agent-context-meter").innerText(), /42%/);
+  assert.match(await detail.getByTestId("agent-context-meter").innerText(), /84k \/ 200k tokens/);
 
-  // Default view: type grouping. System comes first, then polecats.
+  // Four structured turn types remain plain text; thoughts and results collapse.
+  assert.equal(await conversation.getByTestId("agent-turn").count(), 4);
+  const thinking = conversation.getByTestId("agent-turn").nth(0);
+  assert.equal(await thinking.getAttribute("data-role"), "assistant");
+  assert.equal(await thinking.locator("details").getAttribute("open"), null);
+  assert.equal(await thinking.locator("summary").innerText(), "Thinking…");
+  assert.equal(await thinking.getByText("Private fixture thought", { exact: true }).isVisible(), false);
+  const tool = conversation.getByTestId("agent-turn").nth(1);
+  assert.equal(await tool.getByText("Read", { exact: true }).evaluate((node) => node.tagName), "SPAN");
+  const result = conversation.getByTestId("agent-turn").nth(2);
+  assert.equal(await result.getAttribute("data-role"), "user");
+  assert.equal(await result.locator("details").getAttribute("open"), null);
+  assert.equal(await result.locator("summary").innerText(), `${resultText.trim().slice(0, 60)}…`);
+  await result.locator("summary").click();
+  assert.equal(await result.locator("details").getAttribute("open"), "");
+  const plain = conversation.getByTestId("agent-turn").nth(3);
+  assert.match(await plain.innerText(), /<b>never HTML<\/b>/);
+  assert.equal(await plain.locator("b").count(), 0);
+  await conversation.getByTestId("agent-load-older").click();
+  await conversation.getByText("An earlier fixture request", { exact: true }).waitFor();
+  assert.equal(await conversation.getByTestId("agent-turn").count(), 5);
+  assert.match(await conversation.getByTestId("agent-turn").first().innerText(), /An earlier fixture request/);
+  assert.equal(await conversation.getByTestId("agent-load-older").count(), 0);
+  assert.equal(outputRequests.some((request) => request.before === "turn-2"), true);
+
+  // Default type grouping: System, then Polecats, then alphabetical pools.
   const toggle = main.getByTestId("agents-group-toggle");
-  await toggle.waitFor();
   const typeButton = toggle.getByRole("button", { name: "Type", exact: true });
   const statusButton = toggle.getByRole("button", { name: "Status", exact: true });
-  assert.equal(await typeButton.getAttribute("aria-pressed"), "true", "Type is the default grouping");
+  assert.equal(await typeButton.getAttribute("aria-pressed"), "true");
   assert.equal(await statusButton.getAttribute("aria-pressed"), "false");
-  assert.equal(new URL(page.url()).searchParams.has("agentsGroup"), false, "default type grouping has no URL param");
-
+  assert.equal(new URL(page.url()).searchParams.has("agentsGroup"), false);
   const systemSection = main.getByTestId("agents-section-system");
   const polecatSection = main.getByTestId("agents-section-polecat");
-  await systemSection.waitFor();
-  await polecatSection.waitFor();
   assert.deepEqual(
     await main.locator('[data-testid^="agents-section-"]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid"))),
     ["agents-section-system", "agents-section-polecat"],
-    "System section renders before Polecats",
   );
-  assert.equal(await systemSection.getAttribute("open"), "", "System starts expanded");
-  assert.equal(await polecatSection.getAttribute("open"), "", "Polecats starts expanded");
+  assert.equal(await systemSection.getAttribute("open"), "");
+  assert.equal(await polecatSection.getAttribute("open"), "");
   assert.equal(await systemSection.locator(":scope > summary").innerText(), "System (2 · 1 running)");
   assert.equal(await polecatSection.locator(":scope > summary").innerText(), "Polecats (7 · 3 running)");
-
-  // System agents: running ones listed directly, the rest behind a collapsed subgroup.
-  assert.equal(await systemSection.getByText("mayor", { exact: true }).isVisible(), true);
+  assert.equal(await row("mayor").isVisible(), true);
   const systemStopped = systemSection.locator("details");
   assert.equal(await systemStopped.count(), 1);
-  assert.equal(await systemStopped.getAttribute("open"), null, "stopped system agents start collapsed");
-  assert.equal(await systemStopped.getByText("witness", { exact: true }).isVisible(), false);
-
-  // Polecats: one subgroup per pool, alphabetical; a pool with nothing running starts collapsed.
+  assert.equal(await systemStopped.getAttribute("open"), null);
+  assert.equal(await row("witness").isVisible(), false);
   assert.deepEqual(
     await polecatSection.locator("[data-agent-pool]").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-agent-pool"))),
     ["backend", "ledger", "miniapp"],
@@ -116,127 +182,184 @@ try {
   assert.equal(await backend.locator(":scope > summary").innerText(), "backend (4 · 2 running)");
   assert.equal(await ledger.locator(":scope > summary").innerText(), "ledger (1 · 0 running)");
   assert.equal(await miniapp.locator(":scope > summary").innerText(), "miniapp (2 · 1 running)");
-  assert.equal(await backend.getAttribute("open"), "", "pools with running agents start expanded");
-  assert.equal(await miniapp.getAttribute("open"), "", "pools with running agents start expanded");
-  assert.equal(await ledger.getAttribute("open"), null, "a pool with no running agents starts collapsed");
-
-  assert.equal(await backend.getByText("backend.furiosa", { exact: true }).isVisible(), true);
-  assert.equal(await backend.getByText("backend.wisp-worker", { exact: true }).isVisible(), true);
-  assert.equal(await miniapp.getByText("miniapp.worker", { exact: true }).isVisible(), true);
+  assert.equal(await backend.getAttribute("open"), "");
+  assert.equal(await miniapp.getAttribute("open"), "");
+  assert.equal(await ledger.getAttribute("open"), null);
   const backendStopped = backend.locator("details");
-  assert.equal(await backendStopped.count(), 1);
-  assert.equal(await backendStopped.getAttribute("open"), null, "stopped polecats start collapsed");
-  assert.equal(await backendStopped.getByText("backend.stopped", { exact: true }).isVisible(), false);
+  assert.equal(await backendStopped.getAttribute("open"), null);
+  assert.equal(await row("backend.stopped").isVisible(), false);
   await backendStopped.locator(":scope > summary").click();
-  await backendStopped.getByText("backend.stopped", { exact: true }).waitFor();
-  await backendStopped.getByText("backend.suspended", { exact: true }).waitFor();
-  assert.equal(await backendStopped.locator("li").filter({ hasText: "backend.suspended" }).getAttribute("title"), "agent is suspended");
+  await row("backend.stopped").waitFor();
+  assert.equal(await row("backend.suspended").getAttribute("title"), "agent is suspended");
   await backendStopped.locator(":scope > summary").click();
-  assert.equal(await backendStopped.getByText("backend.stopped", { exact: true }).isVisible(), false, "stopped polecats can collapse again");
+  assert.equal(await row("backend.stopped").isVisible(), false, "stopped group can collapse again");
+  await ledger.locator(":scope > summary").click();
+  assert.equal(await row("ledger.stopped").isVisible(), false, "stopped rows have their own disclosure");
+  await ledger.locator(":scope > summary").click();
 
-  const row = backend.locator("li").filter({ hasText: "backend.furiosa" });
-  assert.equal(await row.getByText("Pool: backend.polecat", { exact: true }).isVisible(), true, "pool rig prefix is hidden");
-  assert.equal(await row.getByText("Model: fixture-model", { exact: true }).isVisible(), true);
-  assert.equal(await backend.getByRole("button", { name: "jkr-wisp-az4g", exact: true }).count(), 0, "unknown wisps are not links");
-  const wisp = backend.getByText("jkr-wisp-az4g", { exact: true });
-  await wisp.waitFor();
+  // Selecting a row changes the detail and the persistent URL selection.
+  await row("backend.wisp-worker").click();
+  await detail.getByRole("heading", { name: "backend.wisp-worker", exact: true }).waitFor();
+  assert.equal(await stateChip("waiting").count(), 1, "detail header chip carries its state");
+  assert.notEqual(
+    await stateChip("waiting").evaluate((node) => getComputedStyle(node).color),
+    workingStateColor,
+    "waiting and working chips use different accents",
+  );
+  assert.equal(new URL(page.url()).searchParams.get("agent"), agents[1].name);
+  assert.equal(await row("backend.wisp-worker").getAttribute("aria-current"), "true");
+  assert.equal(await row("backend.furiosa").getAttribute("aria-current"), null);
+  assert.match(await detail.getByTestId("agent-context-meter").innerText(), /Context usage not reported/);
+  const wisp = detail.getByText("jkr-wisp-az4g", { exact: true });
   assert.equal(await wisp.evaluate((element) => element.tagName), "SPAN");
   await wisp.click();
-  assert.equal(await page.getByRole("dialog").count(), 0, "clicking plain wisp text leaves the drawer closed");
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  assert.equal(await detail.getByRole("button", { name: "jkr-wisp-az4g", exact: true }).count(), 0);
+  const conversationTab = detail.getByRole("tab", { name: "Conversation", exact: true });
+  await conversationTab.focus();
+  await conversationTab.press("ArrowRight");
+  const detailsTab = detail.getByRole("tab", { name: "Details", exact: true });
+  assert.equal(await detailsTab.getAttribute("aria-selected"), "true");
+  assert.match(await detail.getByRole("tabpanel").innerText(), /jikerental\/backend.wisp-worker/);
+  await detailsTab.press("Home");
+  assert.equal(await conversationTab.getAttribute("aria-selected"), "true");
 
-  await ledger.locator(":scope > summary").click();
-  assert.equal(await ledger.getByText("ledger.stopped", { exact: true }).count(), 1);
-  assert.equal(await ledger.getByText("ledger.stopped", { exact: true }).isVisible(), false, "stopped agents stay collapsed inside a stopped pool");
-  await ledger.locator(":scope > summary").click();
-  assert.equal(await ledger.getAttribute("open"), null);
-
-  // Switching to status grouping puts the original Running / Stopped & suspended
-  // groups back and records the choice in the URL without a history entry.
+  // Name and state filters affect the master list and use replace for URL state.
+  const filter = main.getByTestId("agents-filter");
+  await filter.fill("MINIAPP");
+  assert.equal(await main.locator("[data-agent-name]").count(), 2);
+  assert.equal(await row("miniapp.worker").isVisible(), true);
+  await filter.fill("");
+  const states = main.getByTestId("agents-state-filter");
+  // Each state dot carries its data-state and a distinct accent: working is the
+  // brand color, waiting amber, idle blue, stopped grey. Suspended is a hollow
+  // dashed ring rather than a filled dot.
+  const stateDot = (state) =>
+    states.locator(`[data-agent-state="${state}"] [data-state="${state}"]`);
+  const dotColors = [];
+  for (const state of ["working", "waiting", "idle", "stopped"]) {
+    assert.equal(await stateDot(state).count(), 1, `${state} dot carries data-state`);
+    dotColors.push(await stateDot(state).evaluate((node) => getComputedStyle(node).backgroundColor));
+  }
+  assert.equal(new Set(dotColors).size, 4, "state dots use four different colors");
+  assert.equal(
+    await stateDot("suspended").evaluate((node) => getComputedStyle(node).borderStyle),
+    "dashed",
+    "suspended is a hollow dashed ring",
+  );
   const historyLength = await page.evaluate(() => history.length);
+  await states.getByRole("button", { name: "Suspended (1)", exact: true }).click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "suspended");
+  assert.equal(await main.locator("[data-agent-name]").count(), 1);
+  assert.equal(await row("backend.suspended").isVisible(), true);
+  assert.equal(await page.evaluate(() => history.length), historyLength);
+  await states.getByRole("button", { name: "Suspended (1)", exact: true }).click();
+  await page.waitForFunction(() => !new URL(location.href).searchParams.has("agentsState"));
+  assert.equal(await main.locator("[data-agent-name]").count(), 9);
+  await filter.fill("does-not-exist");
+  await main.getByText("No matching agents.", { exact: true }).waitFor();
+  await filter.fill("");
+
+  // Status mode preserves Running / Stopped & suspended and history length.
   await statusButton.click();
   await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsGroup") === "status");
-  assert.equal(await page.evaluate(() => history.length), historyLength, "group toggle replaces instead of pushing history");
+  assert.equal(await page.evaluate(() => history.length), historyLength);
   assert.equal(await statusButton.getAttribute("aria-pressed"), "true");
-  assert.equal(await typeButton.getAttribute("aria-pressed"), "false");
   assert.equal(await main.getByTestId("agents-section-system").count(), 0);
   assert.equal(await main.getByTestId("agents-section-polecat").count(), 0);
-
-  const running = main.locator("details").filter({ has: page.locator("summary", { hasText: "Running (4)" }) });
-  const stopped = main.locator("details").filter({ has: page.locator("summary", { hasText: "Stopped & suspended (5)" }) });
-  await running.getByText("backend.furiosa", { exact: true }).waitFor();
-  assert.equal(await running.getAttribute("open"), "", "Running starts expanded");
-  assert.equal(await running.getByText("backend.wisp-worker", { exact: true }).isVisible(), true);
-  assert.equal(await stopped.getAttribute("open"), null, "Stopped & suspended starts collapsed");
-  assert.equal(await stopped.getByText("backend.stopped", { exact: true }).isVisible(), false);
-  await stopped.locator("summary").click();
-  await stopped.getByText("backend.stopped", { exact: true }).waitFor();
-  await stopped.getByText("backend.suspended", { exact: true }).waitFor();
-  assert.equal(await stopped.locator("li").filter({ hasText: "backend.suspended" }).getAttribute("title"), "agent is suspended");
-  await stopped.locator("summary").click();
-  assert.equal(await stopped.getByText("backend.stopped", { exact: true }).isVisible(), false, "group can collapse again");
-  await running.locator("summary").click();
-  assert.equal(await running.getByText("backend.furiosa", { exact: true }).isVisible(), false, "Running can collapse too");
-  await running.locator("summary").click();
-
+  const running = main.locator('[data-group-key="status-running"]');
+  const stopped = main.locator('[data-group-key="status-stopped"]');
+  assert.equal(await running.locator(":scope > summary").innerText(), "Running (4)");
+  assert.equal(await stopped.locator(":scope > summary").innerText(), "Stopped & suspended (5)");
+  assert.equal(await running.getAttribute("open"), "");
+  assert.equal(await stopped.getAttribute("open"), null);
+  await stopped.locator(":scope > summary").click();
+  await row("backend.suspended").waitFor();
+  assert.equal(await row("backend.suspended").getAttribute("title"), "agent is suspended");
+  await stopped.locator(":scope > summary").click();
+  assert.equal(await row("backend.stopped").isVisible(), false);
+  await running.locator(":scope > summary").click();
+  assert.equal(await row("backend.furiosa").isVisible(), false, "running group can collapse");
+  await running.locator(":scope > summary").click();
   await typeButton.click();
   await page.waitForFunction(() => !new URL(location.href).searchParams.has("agentsGroup"));
-  assert.equal(await typeButton.getAttribute("aria-pressed"), "true");
-  await main.getByTestId("agents-section-system").waitFor();
 
-  await backend.locator("li").filter({ hasText: "backend.furiosa" }).getByRole("button", { name: bead.id, exact: true }).evaluate((link) => link.click());
+  // Known beads open the modal; jump back reveals every selected-row ancestor.
+  await row("backend.furiosa").click();
+  await detail.getByRole("button", { name: bead.id, exact: true }).click();
   const drawer = page.getByRole("dialog");
   await drawer.getByRole("heading", { name: bead.title, exact: true }).waitFor();
   const badge = drawer.getByTestId("bead-agent-badge");
-  await badge.waitFor();
   const badgeText = await badge.innerText();
-  assert.ok(badgeText.includes(agents[0].shortName), "header badge names the agent");
-  assert.ok(badgeText.includes("working"), "header badge shows the agent state");
-  assert.ok(badgeText.includes("+2"), "header badge counts the other agents");
+  assert.ok(badgeText.includes(agents[0].shortName));
+  assert.ok(badgeText.includes("working"));
+  assert.ok(badgeText.includes("+2"));
   assert.match(await badge.getAttribute("title"), /View in Agents/);
   const beadAgents = page.getByTestId("bead-agents");
-  await beadAgents.waitFor();
   await beadAgents.getByText(agents[0].shortName, { exact: true }).waitFor();
-  await beadAgents.getByText("working", { exact: true }).first().waitFor();
   await beadAgents.getByText("Model: fixture-model", { exact: true }).first().waitFor();
   await beadAgents.getByText(agents[3].shortName, { exact: true }).waitFor();
   await beadAgents.getByText("suspended", { exact: true }).first().waitFor();
   await beadAgents.getByText("ledger.stopped", { exact: true }).waitFor();
   assert.equal(await beadAgents.getByTestId("bead-agent-link").count(), 3);
-  assert.equal(new URL(page.url()).searchParams.get("view"), "agents");
-  // Active agents follow the fixture order: furiosa, suspended, ledger.stopped.
-  // Collapse all three ancestors while the drawer makes the page inert.
-  const inertPolecatSection = page.locator('[data-testid="agents-section-polecat"]');
+  // Use CSS locators for the page while Base UI marks the background inert.
+  const inertPolecat = page.locator('[data-testid="agents-section-polecat"]');
   const inertLedger = page.locator('[data-testid="agents-section-polecat"] [data-agent-pool="ledger"]');
-  const inertLedgerStopped = page.locator('[data-testid="agents-section-polecat"] [data-agent-pool="ledger"] details');
-  await inertPolecatSection.evaluate((section) => { section.open = false; });
-  assert.equal(await inertPolecatSection.getAttribute("open"), null);
-  await inertLedger.evaluate((pool) => { pool.open = false; });
-  assert.equal(await inertLedger.getAttribute("open"), null);
-  await inertLedgerStopped.evaluate((group) => { group.open = false; });
-  assert.equal(await inertLedgerStopped.getAttribute("open"), null);
+  const inertLedgerStopped = inertLedger.locator("details");
+  await inertPolecat.evaluate((node) => { node.open = false; });
+  await inertLedger.evaluate((node) => { node.open = false; });
+  await inertLedgerStopped.evaluate((node) => { node.open = false; });
   await beadAgents.getByTestId("bead-agent-link").nth(2).click();
   await drawer.waitFor({ state: "detached" });
-  const focusedRow = page.locator(`[data-agent-name="${agents[6].name}"]`);
-  await focusedRow.waitFor();
-  assert.equal(await focusedRow.isVisible(), true, "focused agent row is visible");
-  assert.equal(await focusedRow.getAttribute("data-highlighted"), "true");
-  assert.equal(await main.getByTestId("agents-section-polecat").getAttribute("open"), "", "jump expands the Polecats section");
-  const focusedLedger = main.locator('[data-agent-pool="ledger"]');
-  assert.equal(await focusedLedger.getAttribute("open"), "", "jump expands the ledger pool");
-  assert.equal(await focusedLedger.locator("details").getAttribute("open"), "", "jump expands the nested Stopped & suspended group");
-  assert.equal(new URL(page.url()).searchParams.get("view"), "agents");
+  await detail.getByRole("heading", { name: "ledger.stopped", exact: true }).waitFor();
+  const selected = row("ledger.stopped");
+  await selected.waitFor();
+  assert.equal(await selected.isVisible(), true);
+  assert.equal(await selected.getAttribute("aria-current"), "true");
+  assert.equal(await polecatSection.getAttribute("open"), "");
+  assert.equal(await ledger.getAttribute("open"), "");
+  assert.equal(await ledger.locator("details").getAttribute("open"), "");
   assert.equal(new URL(page.url()).searchParams.get("agent"), agents[6].name);
-  await page.waitForFunction(() => !new URL(location.href).searchParams.has("agent"));
+  await page.reload();
+  await detail.getByRole("heading", { name: "ledger.stopped", exact: true }).waitFor();
+  assert.equal(await row("ledger.stopped").getAttribute("aria-current"), "true", "selection survives reload");
+
+  // Transcript failures and missing fields leave the master list usable.
+  outputResponse = { configured: true, available: false };
+  await page.goto(url.href);
+  await conversation.getByText("No transcript for this agent.", { exact: true }).waitFor();
+  assert.equal(await row("backend.furiosa").isVisible(), true);
+  await row("backend.wisp-worker").click();
+  await detail.getByRole("heading", { name: "backend.wisp-worker", exact: true }).waitFor();
+  outputStatus = 502;
+  outputResponse = { error: "fixture output unavailable", code: "gascity_unavailable" };
+  await page.goto(url.href);
+  await conversation.getByRole("alert").filter({ hasText: "fixture output unavailable" }).waitFor();
+  assert.equal(await row("mayor").isVisible(), true);
+  await row("mayor").click();
+  await detail.getByRole("heading", { name: "mayor", exact: true }).waitFor();
+  outputStatus = 200;
+  outputResponse = { configured: true, available: true, turns: null };
+  await page.goto(url.href);
+  await conversation.getByText("No messages yet.", { exact: true }).waitFor();
+  outputResponse = { configured: "true", available: "true" };
+  await page.goto(url.href);
+  await conversation.getByText("Gas City is not configured.", { exact: true }).waitFor();
+  outputResponse = { ...transcript, format: "text", pagination: { hasOlder: false, total: 4 } };
+  await page.goto(url.href);
+  await conversation.locator("pre").waitFor();
+  assert.match(await conversation.locator("pre").innerText(), /\[thinking\]/);
+  assert.match(await conversation.locator("pre").innerText(), /<b>never HTML<\/b>/);
+  assert.equal(await conversation.locator("pre b").count(), 0);
+  outputResponse = transcript;
 
   response = { configured: false, agents: [] };
   await page.goto(url.href);
   await main.getByText("Set GASCITY_API_URL to enable the read-only Gas City agents view.", { exact: true }).waitFor();
-
   status = 502;
   response = { error: "gascity agents request failed: HTTP 503", code: "gascity_unavailable" };
   await page.goto(url.href);
   await main.getByRole("alert").filter({ hasText: response.error }).waitFor();
-
   status = 200;
   response = { configured: true, rig: "jikerental", agents: [] };
   await page.goto(url.href);
@@ -248,11 +371,11 @@ try {
   missingAgentsUrl.searchParams.set("bead", bead.id);
   await page.goto(missingAgentsUrl.href);
   await drawer.getByRole("heading", { name: bead.title, exact: true }).waitFor();
-  assert.equal(await page.getByTestId("bead-agents").count(), 0, "missing agents fields leave the drawer usable without an Agent section");
-  assert.equal(await page.getByTestId("bead-agent-badge").count(), 0, "missing agents fields leave the header without an agent badge");
+  assert.equal(await page.getByTestId("bead-agents").count(), 0);
+  assert.equal(await page.getByTestId("bead-agent-badge").count(), 0);
 
-  assert.deepEqual(writes, [], "agents navigation and bead inspection never write project data");
-  console.log("PASS: type/status grouping toggle, system/polecat sections, polecat pool subgroups, collapsed stopped groups, known-bead links, inert wisps, drawer agent badge/cards, multi-level agent jump highlight, pool prefixes, unconfigured/empty/error/missing-field states, and read-only behavior");
+  assert.deepEqual(writes, [], "agents, transcripts and bead inspection never write project data");
+  console.log("PASS: master/detail selection, persistent URL, structured/plain transcripts, older pages, context meter, filters, type/status grouping, drawer jump, transcript/list errors, missing fields and read-only behavior");
 } catch (error) {
   console.error({ url: page?.url(), body: page ? (await page.locator("body").innerText()).slice(0, 3000) : "" });
   throw error;
