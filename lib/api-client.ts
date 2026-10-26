@@ -1,4 +1,5 @@
 import type { Bead, BeadRef, CreateInput, UpdateInput, DepType } from "./schema";
+import type { GascityAgent } from "./gascity-agents";
 import type { UpdateStatus, UpdateResult, UpdateChannel, UpdateTarget } from "./update-types";
 
 export interface Meta {
@@ -29,6 +30,15 @@ export interface ActivityItem {
 }
 export interface ActivityResponse {
   items: ActivityItem[];
+}
+
+/** Read-only agents returned for a project's Gas City rig. */
+export interface AgentsResponse {
+  /** Client-side flag for missing or invalid response fields. */
+  malformed?: boolean;
+  configured: boolean;
+  rig?: string;
+  agents: GascityAgent[];
 }
 
 export interface InsightsData {
@@ -200,6 +210,15 @@ export const api = {
   doctor: (projectId: string) => request<DoctorResponse>(`${base(projectId)}/doctor`),
 
   activity: (projectId: string) => request<ActivityResponse>(`${base(projectId)}/activity`),
+  agents: async (projectId: string): Promise<AgentsResponse> => {
+    const data = await request<Partial<AgentsResponse> | null>(`${base(projectId)}/agents`);
+    return {
+      ...data,
+      malformed: !Array.isArray(data?.agents) || typeof data?.configured !== "boolean",
+      configured: typeof data?.configured === "boolean" ? data.configured : false,
+      agents: Array.isArray(data?.agents) ? data.agents : [],
+    };
+  },
 
   insights: (projectId: string, days: number) =>
     request<InsightsData>(`${base(projectId)}/insights?days=${days}`),
