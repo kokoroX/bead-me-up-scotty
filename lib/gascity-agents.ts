@@ -43,6 +43,31 @@ function stateOrder(state: string): number {
   return order < 0 ? 3 : order;
 }
 
+/** Strip the rig prefix from a pool name when it belongs to that rig. */
+function withoutRig(pool: string, rig: string): string {
+  const prefix = rig ? `${rig}/` : "";
+  return prefix && pool.startsWith(prefix) ? pool.slice(prefix.length) : pool;
+}
+
+/**
+ * Classify a pool by its last dotted segment after removing the rig prefix:
+ * `polecat` pools belong to the polecat fleet, everything else is system.
+ */
+export function agentType(pool: string | null, rig: string): "system" | "polecat" {
+  return polecatPoolName(pool, rig) === null ? "system" : "polecat";
+}
+
+/**
+ * Polecat pool name without the rig prefix and `.polecat` suffix (for example
+ * `backend` for `jikerental/backend.polecat`), or null for non-polecat pools.
+ */
+export function polecatPoolName(pool: string | null, rig: string): string | null {
+  if (!pool) return null;
+  const parts = withoutRig(pool, rig).split(".");
+  if (parts.at(-1) !== "polecat") return null;
+  return parts.slice(0, -1).join(".") || "polecat";
+}
+
 /** Validate a city response, select the rig, and sort running agents first. */
 export function toProjectAgents(raw: unknown, rig: string): GascityAgent[] {
   const { items } = agentsSchema.parse(raw);

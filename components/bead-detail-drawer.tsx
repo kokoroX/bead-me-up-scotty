@@ -23,6 +23,8 @@ import { AiAssistPanel } from "@/components/ai-assist-panel";
 import { DetailFieldsMenu } from "@/components/detail-fields";
 import { useDetailFields } from "@/hooks/use-detail-fields";
 import { useAgents } from "@/hooks/use-agents";
+import { useUrlState } from "@/hooks/use-url-state";
+import type { GascityAgent } from "@/lib/gascity-agents";
 import {
   DETAIL_FIELDS,
   fmtEstimate,
@@ -210,6 +212,17 @@ function DrawerBody({
   const activeAgents = !agentError && !agentData?.malformed && Array.isArray(agentData?.agents)
     ? agentData.agents.filter((agent) => agent.activeBead === bead.id)
     : [];
+  const { updateUrl } = useUrlState();
+  // Leave the drawer and hand the one-shot `agent` param to the Agents view,
+  // which scrolls to and highlights that row (see agents-view.tsx).
+  const openAgentInAgentsView = (name: string) => {
+    onClose();
+    updateUrl((params) => {
+      params.set("view", "agents");
+      params.set("agent", name);
+      params.delete("bead");
+    });
+  };
 
   const update = useUpdateBead();
   const setStatus = useSetStatus();
@@ -398,6 +411,9 @@ function DrawerBody({
         <span className="h-[9px] w-[9px] rounded-full" style={{ background: catColor(bead.status) }} />
         <CopyableId id={bead.id} className="font-mono text-[13px] text-[var(--text-2)]" />
         <StatusChip status={bead.status} />
+        {activeAgents.length > 0 && (
+          <AgentBadge agents={activeAgents} onOpen={openAgentInAgentsView} />
+        )}
         <span className="flex-1" />
         <DetailFieldsMenu />
         <IconBtn title="Copy link" onClick={copyLink}>
@@ -518,12 +534,48 @@ function DrawerBody({
             )}
             {show.assignee && <AssigneeField bead={bead} />}
             {activeAgents.length > 0 && (
-              <div data-testid="bead-agents" className="flex flex-col gap-[5px]">
-                <span className={fieldLabel}>Agent</span>
-                <div className="flex flex-wrap gap-2 rounded-[9px] border border-border bg-[var(--surface-2)] px-[10px] py-2 text-[12.5px] text-[var(--text-2)]">
-                  {activeAgents.map((agent) => (
-                    <span key={agent.name}>{agent.shortName} · {agent.state}</span>
-                  ))}
+              <div data-testid="bead-agents" className="col-span-2 flex flex-col gap-[5px]">
+                <span className={fieldLabel}>
+                  {activeAgents.length === 1 ? "Agent" : "Agents"}
+                </span>
+                <div className="flex flex-col gap-[7px]">
+                  {activeAgents.map((agent) => {
+                    const tone = agentStateClasses(agent.state);
+                    return (
+                      <div
+                        key={agent.name}
+                        className="flex items-center gap-[9px] rounded-[9px] border border-[var(--brand)]/40 bg-[var(--brand-weak)] p-[9px_11px]"
+                      >
+                        <span
+                          className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${tone.dot} ${
+                            tone.pulse ? "animate-pulse motion-reduce:animate-none" : ""
+                          }`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-[7px]">
+                            <span className="font-semibold text-[var(--text)]">
+                              {agent.shortName}
+                            </span>
+                            <span className="text-[12px] text-[var(--text-2)]">{agent.state}</span>
+                          </div>
+                          <div className="mt-[2px] flex flex-wrap items-center gap-x-3 gap-y-[2px] text-[11.5px] text-[var(--text-3)]">
+                            <span>Model: {agent.model ?? "—"}</span>
+                            <span title={agent.lastActivity ?? undefined}>
+                              Last active: {agent.lastActivity ? relTime(agent.lastActivity) : "—"}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          data-testid="bead-agent-link"
+                          onClick={() => openAgentInAgentsView(agent.name)}
+                          className="flex-shrink-0 rounded px-1 text-[11.5px] font-medium text-[var(--brand)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]"
+                        >
+                          View in Agents →
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1220,6 +1272,60 @@ function Header({ icon, label, count }: { icon: string; label: string; count?: n
         <span className="font-mono text-[11px] text-[var(--text-3)]">{count}</span>
       )}
     </div>
+  );
+}
+
+/** Working agents get the brand accent; busy-but-idle a step down; the rest grey. */
+function agentStateClasses(state: string): { dot: string; chip: string; pulse: boolean } {
+  if (state === "working") {
+    return {
+      dot: "bg-[var(--brand)]",
+      chip: "border-[var(--brand)]/40 bg-[var(--brand-weak)] text-[var(--brand)]",
+      pulse: true,
+    };
+  }
+  if (state === "waiting" || state === "idle") {
+    return {
+      dot: "bg-[var(--text-2)]",
+      chip: "border-border bg-[var(--surface-2)] text-[var(--text-2)]",
+      pulse: false,
+    };
+  }
+  return {
+    dot: "bg-[var(--text-3)]",
+    chip: "border-border bg-[var(--surface-2)] text-[var(--text-3)]",
+    pulse: false,
+  };
+}
+
+function AgentBadge({
+  agents,
+  onOpen,
+}: {
+  agents: GascityAgent[];
+  onOpen: (name: string) => void;
+}) {
+  const primary = agents[0];
+  const tone = agentStateClasses(primary.state);
+  const extra = agents.length - 1;
+  return (
+    <button
+      type="button"
+      data-testid="bead-agent-badge"
+      title={`${primary.name} · ${primary.state} — View in Agents`}
+      onClick={() => onOpen(primary.name)}
+      className={`inline-flex flex-shrink-0 items-center gap-[5px] rounded-full border px-2 py-px text-[10.5px] font-semibold transition-colors hover:border-[var(--brand)] ${tone.chip}`}
+    >
+      <span
+        className={`h-[6px] w-[6px] flex-shrink-0 rounded-full ${tone.dot} ${
+          tone.pulse ? "animate-pulse motion-reduce:animate-none" : ""
+        }`}
+      />
+      <span className="max-w-[150px] truncate">
+        {primary.shortName} · {primary.state}
+      </span>
+      {extra > 0 && <span className="opacity-70">+{extra}</span>}
+    </button>
   );
 }
 
