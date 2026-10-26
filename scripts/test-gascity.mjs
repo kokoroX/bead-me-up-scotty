@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createCityAgentsCache, toProjectAgents, parseRigMap } from "../lib/gascity-agents.ts";
+import { agentType, createCityAgentsCache, parseRigMap, polecatPoolName, toProjectAgents } from "../lib/gascity-agents.ts";
 
 const rig = "jikerental";
 const agent = (name, extra = {}) => ({ name: `${rig}/${name}`, rig, ...extra });
@@ -68,6 +68,20 @@ assert.equal(unprefixed.pool, "shared/polecat");
 assert.equal(displayPool(unprefixed.pool), "shared/polecat");
 const [similarPrefix] = toProjectAgents({ items: [{ name: "jikerental-other/agent", rig }] }, rig);
 assert.equal(similarPrefix.shortName, "jikerental-other/agent");
+
+assert.equal(agentType("jikerental/backend.polecat", rig), "polecat");
+assert.equal(agentType("jikerental/miniapp.polecat", rig), "polecat");
+assert.equal(agentType("backend.polecat", rig), "polecat");
+assert.equal(agentType(null, rig), "system");
+assert.equal(agentType("", rig), "system");
+assert.equal(agentType("jikerental/claude", rig), "system");
+assert.equal(agentType("jikerental/backend.polecat.extra", rig), "system");
+assert.equal(polecatPoolName("jikerental/backend.polecat", rig), "backend");
+assert.equal(polecatPoolName("jikerental/miniapp.polecat", rig), "miniapp");
+assert.equal(polecatPoolName("backend.polecat", rig), "backend");
+assert.equal(polecatPoolName(null, rig), null);
+assert.equal(polecatPoolName("jikerental/claude", rig), null);
+assert.equal(polecatPoolName("jikerental", rig), null);
 
 const [minimal] = toProjectAgents({ items: [agent("minimal")] }, rig);
 assert.deepEqual(minimal, {
@@ -154,4 +168,4 @@ assert.equal(await validRetry, rawCity);
 assert.equal(await loadCity(cityUrl), rawCity);
 assert.equal(loads.length, 7);
 
-console.log("PASS: rig filtering, running/state/name sorting, field normalization, pool prefixes, response validation, rig map parsing, and city cache TTL/concurrency/isolation/recovery");
+console.log("PASS: rig filtering, running/state/name sorting, field normalization, pool prefixes, system/polecat classification, response validation, rig map parsing, and city cache TTL/concurrency/isolation/recovery");
