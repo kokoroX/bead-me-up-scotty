@@ -48,7 +48,7 @@ export const demoStore: BeadsStore = {
       parent: input.parent || null,
     });
     beads = [...beads, bead];
-    return bead;
+    return { id };
   },
   async update(id, patch: UpdateInput) {
     const b = find(id);
@@ -70,7 +70,7 @@ export const demoStore: BeadsStore = {
         });
       }
     }
-    return { ...b };
+    return { id };
   },
   async setStatus(id, status, actor, reason) {
     const b = find(id);
@@ -86,7 +86,7 @@ export const demoStore: BeadsStore = {
       b.closed_at = null;
       b.close_reason = null;
     }
-    return { ...b };
+    return { id };
   },
   async remove(id) {
     beads = beads.filter((b) => b.id !== id);
@@ -95,19 +95,19 @@ export const demoStore: BeadsStore = {
     const b = find(id);
     b.comments = [...(b.comments ?? []), { author: actor, text, created_at: nowIso() }];
     b.updated_at = nowIso();
-    return { ...b };
+    return { id };
   },
   async addDep(id, dependsOnId, type: DepType) {
     const b = find(id);
     b.dependencies = [...(b.dependencies ?? []), { issue_id: id, depends_on_id: dependsOnId, type }];
     b.updated_at = nowIso();
-    return { ...b };
+    return { id };
   },
   async removeDep(id, dependsOnId) {
     const b = find(id);
     b.dependencies = (b.dependencies ?? []).filter((d) => d.depends_on_id !== dependsOnId);
     b.updated_at = nowIso();
-    return { ...b };
+    return { id };
   },
   async createGate(blocks, reason, actor) {
     const target = find(blocks);
@@ -133,13 +133,13 @@ export const demoStore: BeadsStore = {
     // this dep, and clears once the gate is closed (approved).
     target.dependencies = [...(target.dependencies ?? []), { issue_id: blocks, depends_on_id: id, type: "blocks" }];
     target.updated_at = nowIso();
-    return { ...gate };
+    return { id };
   },
   async removeLabel(id, label) {
     const b = find(id);
     b.labels = (b.labels ?? []).filter((l) => l !== label);
     b.updated_at = nowIso();
-    return { ...b };
+    return { id };
   },
   async archive(id) {
     const b = find(id);
@@ -147,7 +147,7 @@ export const demoStore: BeadsStore = {
     b.closed_at = nowIso();
     if (!(b.labels ?? []).includes("archived")) b.labels = [...(b.labels ?? []), "archived"];
     b.updated_at = nowIso();
-    return { ...b };
+    return { id };
   },
   async doctor(): Promise<DoctorInfo> {
     return {
