@@ -19,6 +19,13 @@ export function ActivityView() {
   const includeWisps = searchParams.get("activityWisps") === "1";
   const { data, isLoading } = useActivity(projectId, { includeWisps });
   const items = data?.items ?? [];
+  const [selectedItemId, setSelectedItemId] = React.useState<string | null>(null);
+  const selectedItem = items.find((it) => it.id === selectedItemId);
+  const highlightedItemId = selectedBeadId
+    ? (selectedItem?.issueId === selectedBeadId
+      ? selectedItem.id
+      : items.find((it) => it.issueId === selectedBeadId)?.id)
+    : undefined;
 
   const toggleWisps = () => {
     updateUrl((params) => {
@@ -55,14 +62,18 @@ export function ActivityView() {
               <li key={it.id}>
                 <button
                   data-keyboard-bead-id={it.issueId}
-                  aria-current={selectedBeadId === it.issueId ? "true" : undefined}
-                  onFocus={() => selectBead(it.issueId)}
+                  aria-current={highlightedItemId === it.id ? "true" : undefined}
+                  onFocus={() => {
+                    setSelectedItemId(it.id);
+                    selectBead(it.issueId);
+                  }}
                   onClick={() => {
+                    setSelectedItemId(it.id);
                     selectBead(it.issueId);
                     openDetail(it.issueId);
                   }}
                   className={`flex w-full items-start gap-3 rounded-[10px] px-3 py-[10px] text-left hover:bg-[var(--surface-2)] focus-visible:outline-none ${
-                    selectedBeadId === it.issueId ? "ring-2 ring-inset ring-[var(--brand)]" : ""
+                    highlightedItemId === it.id ? "ring-2 ring-inset ring-[var(--brand)]" : ""
                   }`}
                 >
                   <span
