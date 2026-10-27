@@ -1,5 +1,5 @@
 import { getStore } from "@/lib/store";
-import { getConfig } from "@/lib/config";
+import { closeActor } from "@/lib/config";
 import { ok, fail } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -8,8 +8,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ projec
   try {
     const { projectId, id } = await params;
     const store = await getStore(projectId);
-    const cfg = getConfig();
-    const bead = await store.archive(id, cfg.humanActor);
+    // Archiving closes the bead, so the same assignee rule applies.
+    const bead = await store.archive(id, closeActor((await store.get(id))?.assignee));
     return ok(bead);
   } catch (e) {
     return fail(e);

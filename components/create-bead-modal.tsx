@@ -55,8 +55,24 @@ export function CreateBeadModal({
     max: 1200,
     deltaFactor: 2,
   });
+  // Set by the form while it holds typed text. A stray click on the backdrop
+  // must not discard a half-written bead; Esc, Cancel and × still close it.
+  const dirtyRef = React.useRef(false);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next, details) => {
+        if (!next && details.reason === "outside-press" && dirtyRef.current) {
+          details.cancel();
+          toast("Your new bead isn't saved yet", {
+            id: "create-unsaved",
+            description: "Press Esc or Cancel to discard it.",
+          });
+          return;
+        }
+        onOpenChange(next);
+      }}
+    >
       <DialogContent
         showCloseButton={false}
         style={{ width, maxWidth: "96vw" }}
@@ -70,7 +86,7 @@ export function CreateBeadModal({
         {/* Conditionally mounted, so the form remounts on every open and the
             preset below is picked up fresh — no useEffect sync needed. */}
         {open && (
-          <CreateForm parent={parent} type={type} onClose={() => onOpenChange(false)} />
+          <CreateForm parent={parent} type={type} dirtyRef={dirtyRef} onClose={() => onOpenChange(false)} />
         )}
       </DialogContent>
     </Dialog>
@@ -80,10 +96,12 @@ export function CreateBeadModal({
 function CreateForm({
   parent,
   type: presetType,
+  dirtyRef,
   onClose,
 }: {
   parent: string;
   type?: BeadType;
+  dirtyRef: React.RefObject<boolean>;
   onClose: () => void;
 }) {
   const { beads, meta, projectId } = useApp();
@@ -119,6 +137,14 @@ function CreateForm({
     : form.parent
       ? "New child bead"
       : "New bead";
+
+  const hasText = [form.title, form.description, form.assignee, form.labels].some((v) => v.trim() !== "");
+  React.useEffect(() => {
+    dirtyRef.current = hasText;
+    return () => {
+      dirtyRef.current = false;
+    };
+  }, [dirtyRef, hasText]);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));

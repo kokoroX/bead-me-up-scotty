@@ -18,6 +18,7 @@ import { GITHUB_REPO } from "@/lib/build-info";
 import { BuildBadge } from "@/components/build-badge";
 import { UpdateIndicator } from "@/components/update-indicator";
 import { cn } from "@/lib/utils";
+import { navViews } from "@/lib/views";
 
 function githubIssueUrl(kind: "bug" | "feature"): string {
   const isBug = kind === "bug";
@@ -35,33 +36,24 @@ function openIssue(kind: "bug" | "feature") {
   window.open(githubIssueUrl(kind), "_blank", "noopener,noreferrer");
 }
 
-const NAV: { key: View; label: string; icon: string }[] = [
-  { key: "focus", label: "Focus", icon: "bolt" },
-  { key: "board", label: "Board", icon: "board" },
-  { key: "list", label: "List", icon: "list" },
-  { key: "epics", label: "Epics", icon: "target" },
-  { key: "graph", label: "Graph", icon: "graph" },
-  { key: "insights", label: "Insights", icon: "milestone" },
-  { key: "activity", label: "Activity", icon: "comment" },
-  { key: "agents", label: "Agents", icon: "bot" },
-  { key: "needsyou", label: "Needs You", icon: "user" },
-  { key: "achievements", label: "Achievements", icon: "feature" },
-  { key: "publish", label: "Publish", icon: "rocket" },
-  { key: "settings", label: "Settings", icon: "settings" },
-];
-
 export function Sidebar({
   view,
   onView,
   kind,
   projectId,
   live,
+  mobile = false,
+  onProjectNavigate,
 }: {
   view: View;
   onView: (v: View) => void;
   kind?: "bd" | "demo";
   projectId: string;
   live?: boolean;
+  /** Render the same navigation inside the mobile Sheet. */
+  mobile?: boolean;
+  /** Close an owning mobile Sheet after project routing. */
+  onProjectNavigate?: () => void;
 }) {
   const { mode, toggle } = useTheme();
   const { meta, beads, index } = useApp();
@@ -73,7 +65,11 @@ export function Sidebar({
   const game = useGamification(projectId, !!meta?.gamification);
 
   return (
-    <aside className="flex w-[228px] flex-shrink-0 flex-col border-r border-border bg-[var(--surface)] p-[18px_14px]">
+    <aside className={cn(
+      mobile
+        ? "flex h-full w-full min-w-0 flex-col overflow-y-auto border-0 bg-[var(--surface)] p-[18px_14px]"
+        : "hidden w-[228px] flex-shrink-0 flex-col border-r border-border bg-[var(--surface)] p-[18px_14px] md:flex",
+    )}>
       <div className="flex items-center gap-[10px] px-2 pb-[18px] pt-1">
         <div
           className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[9px] text-white"
@@ -86,11 +82,11 @@ export function Sidebar({
         </div>
       </div>
 
-      <ProjectSwitcher projectId={projectId} kind={kind} live={live} />
+      <ProjectSwitcher projectId={projectId} kind={kind} live={live} onNavigate={onProjectNavigate} />
 
 
       <nav className="flex flex-col gap-[2px]">
-        {NAV.filter((n) => n.key !== "achievements" || meta?.gamification).map((n) => {
+        {navViews(!!meta?.gamification).map((n) => {
           const active = view === n.key;
           return (
             <button

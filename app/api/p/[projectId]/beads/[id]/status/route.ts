@@ -1,5 +1,5 @@
 import { getStore } from "@/lib/store";
-import { getConfig } from "@/lib/config";
+import { getConfig, closeActor } from "@/lib/config";
 import { ok, fail } from "@/lib/api";
 import { z } from "zod";
 import { BEAD_STATUSES } from "@/lib/schema";
@@ -18,7 +18,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
     const store = await getStore(projectId);
     const cfg = getConfig();
     const { status, reason } = bodySchema.parse(await req.json());
-    const bead = await store.setStatus(id, status, cfg.humanActor, reason);
+    // bd only lets a claimed bead's assignee close it; see closeActor.
+    const actor = status === "closed" ? closeActor((await store.get(id))?.assignee) : cfg.humanActor;
+    const bead = await store.setStatus(id, status, actor, reason);
     return ok(bead);
   } catch (e) {
     return fail(e);

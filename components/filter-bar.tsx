@@ -56,11 +56,11 @@ export function FilterBar({
   // an `@container` (Board and List headers). `order` reshuffles them by
   // header width so the search box never shrinks below a usable size:
   //   narrow  → title · actions / search (full row) / facets (scroll row)
-  //   medium  → title · search · actions / facets (scroll row)
+  //   medium  → title · search (fills to actions) · actions / facets (scroll row)
   //   wide    → title · search · facets · actions, all on one row
   return (
     <>
-      <div className="order-3 flex h-9 min-w-0 basis-full items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface-2)] px-[11px] @min-[720px]:order-2 @min-[720px]:max-w-[320px] @min-[720px]:flex-1 @min-[720px]:basis-auto @min-[1400px]:max-w-[280px]">
+      <div className="order-3 flex h-9 min-w-0 basis-full items-center gap-[7px] rounded-[9px] border border-border bg-[var(--surface-2)] px-[11px] @min-[720px]:order-2 @min-[720px]:flex-1 @min-[720px]:basis-auto @min-[1400px]:max-w-[280px]">
         <Icon name="search" size={15} className="flex-shrink-0 text-[var(--text-3)]" />
         <input
           data-search

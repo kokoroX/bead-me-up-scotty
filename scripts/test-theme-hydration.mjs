@@ -6,6 +6,8 @@ const browser=await chromium.launch();
 try {
  const page=await browser.newPage();
  const errors=[];
+ // During load a second, hidden toggle can be mounted briefly; act on the visible one.
+ const themeToggle=()=>page.getByTitle('Toggle theme',{exact:true}).filter({visible:true});
  page.on('console',msg=>{if(msg.type()==='error') errors.push(msg.text());});
  page.on('pageerror',e=>errors.push(e.message));
  await page.addInitScript(()=>{
@@ -15,16 +17,16 @@ try {
   }
  });
  await page.goto(`${base}/p/demo?view=epics`);
- await page.getByTitle('Toggle theme',{exact:true}).waitFor();
+ await themeToggle().waitFor();
  await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
  await page.reload();
- await page.getByTitle('Toggle theme',{exact:true}).waitFor();
+ await themeToggle().waitFor();
  await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
  assert.deepEqual(errors,[], 'saved dark theme must hydrate without console errors');
- await page.getByTitle('Toggle theme',{exact:true}).click();
+ await themeToggle().click();
  await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');
  await page.reload();
- await page.getByTitle('Toggle theme',{exact:true}).waitFor();
+ await themeToggle().waitFor();
  await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');
  assert.equal(await page.evaluate(()=>localStorage.getItem('bmus.theme.demo')),'light');
  assert.deepEqual(errors,[]);

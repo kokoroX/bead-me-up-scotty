@@ -2,6 +2,7 @@ import "server-only";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 
 /**
  * Local app config (NOT stored in beads). Lives as a small JSON file under the
@@ -33,6 +34,11 @@ export interface AppConfig {
   orders: Record<string, Record<string, string[]>>;
   /** Opt-in: show the gamification XP/level layer (off by default). */
   gamification: boolean;
+  /**
+   * True once the human actor was saved from Settings. Until then the actor
+   * follows the computed default, even if an older version wrote it to disk.
+   */
+  humanActorChosen?: boolean;
 }
 
 /**
@@ -97,14 +103,35 @@ function configFile(): string {
   return path.join(configDir(), "config.json");
 }
 
-function defaults(): AppConfig {
-  let user = "you";
+function osUserName(): string {
   try {
-    user = os.userInfo().username || user;
+    return os.userInfo().username || "you";
   } catch {
-    /* ignore */
+    return "you";
   }
-  const humanActor = process.env.BEADS_ACTOR || user;
+}
+
+/** git's user.name as seen from the launch directory, or null without git or a name. */
+function gitUserName(): string | null {
+  try {
+    const name = execFileSync("git", ["config", "--get", "user.name"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      timeout: 2000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return name || null;
+  } catch {
+    return null;
+  }
+}
+
+function defaults(): AppConfig {
+  // Same order as bd's own actor (`bd --help`, --actor): BEADS_ACTOR, then git
+  // user.name, then the OS user. If Scotty stamped writes with the OS name
+  // while `bd update --claim` used the git name, bd would refuse to let the UI
+  // close beads the user claimed from the CLI.
+  const humanActor = process.env.BEADS_ACTOR || gitUserName() || osUserName();
   return {
     humanActor,
     humanAllowlist: [humanActor],
@@ -224,12 +251,20 @@ export function getConfig(): AppConfig {
     onDisk = null;
   }
 
+  // Before 0.3.1 the computed default (the OS user) was written to disk along
+  // with the first project, so an unchosen OS username on disk is a stale
+  // default rather than a preference. Replace it, and keep the new actor in the
+  // allowlist so the user's own writes still render as human.
+  const staleActor =
+    !onDisk?.humanActorChosen && onDisk?.humanActor === osUserName() && d.humanActor !== onDisk.humanActor;
+  const storedAllowlist = onDisk?.humanAllowlist && onDisk.humanAllowlist.length ? onDisk.humanAllowlist : null;
   const merged: AppConfig = {
-    humanActor: onDisk?.humanActor || d.humanActor,
-    humanAllowlist:
-      onDisk?.humanAllowlist && onDisk.humanAllowlist.length
-        ? onDisk.humanAllowlist
-        : d.humanAllowlist,
+    humanActor: staleActor ? d.humanActor : onDisk?.humanActor || d.humanActor,
+    humanAllowlist: !storedAllowlist
+      ? d.humanAllowlist
+      : staleActor && !storedAllowlist.includes(d.humanActor)
+        ? [...storedAllowlist, d.humanActor]
+        : storedAllowlist,
     pollIntervalMs:
       typeof onDisk?.pollIntervalMs === "number" ? onDisk.pollIntervalMs : d.pollIntervalMs,
     projects: sanitizeProjects(onDisk?.projects),
@@ -238,6 +273,7 @@ export function getConfig(): AppConfig {
         ? (onDisk.orders as Record<string, Record<string, string[]>>)
         : {},
     gamification: typeof onDisk?.gamification === "boolean" ? onDisk.gamification : d.gamification,
+    humanActorChosen: onDisk?.humanActorChosen === true,
   };
 
   // One-time migration: back-fill the registry from the legacy single repoPath
@@ -261,11 +297,24 @@ export function getConfig(): AppConfig {
   return cached;
 }
 
+/**
+ * The actor to close a bead as. bd refuses to close a claimed bead as anyone
+ * but its assignee. Before 0.3.1 Scotty wrote as the OS user, so beads people
+ * assigned to themselves then still carry that name. It is the same person on
+ * this machine, so close those as it rather than failing — #61 in reverse.
+ * Every other assignee (a teammate, an agent) keeps bd's protection.
+ */
+export function closeActor(assignee: string | null | undefined): string {
+  const { humanActor } = getConfig();
+  return assignee && assignee !== humanActor && assignee === osUserName() ? assignee : humanActor;
+}
+
 /** Update global settings (actor / allowlist / poll). Project registry has its own mutators. */
 export function saveConfig(
   patch: Partial<Pick<AppConfig, "humanActor" | "humanAllowlist" | "pollIntervalMs" | "gamification">>,
 ): AppConfig {
   const next = { ...getConfig(), ...patch };
+  if (patch.humanActor !== undefined) next.humanActorChosen = true;
   persist(next);
   return next;
 }
