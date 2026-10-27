@@ -1,5 +1,6 @@
 import "server-only";
 import {
+  attachBeadSummaries,
   createCityAgentsCache,
   parseRigMap,
   rigForProject,
@@ -32,7 +33,15 @@ export async function fetchProjectAgents(projectId: string): Promise<{
   const rig = rigForProject(projectId, parseRigMap(process.env.SCOTTY_GASCITY_RIGS));
   try {
     const raw = await fetchCityAgents(`${apiUrl.replace(/\/+$/, "")}/v0/city/${encodeURIComponent(city)}/agents`);
-    const agents = toProjectAgents(raw, rig);
+    const agents = await attachBeadSummaries(toProjectAgents(raw, rig), async (id) => {
+      const response = await fetch(`${apiUrl.replace(/\/+$/, "")}/v0/city/${encodeURIComponent(city)}/bead/${encodeURIComponent(id)}`, {
+        method: "GET",
+        cache: "no-store",
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    });
     return { configured: true, rig, agents };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

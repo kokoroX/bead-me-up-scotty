@@ -15,10 +15,11 @@ import {
 } from "@/lib/gascity-agents";
 import type { AgentOutputResponse } from "@/lib/api-client";
 
-const STATE_FILTERS = ["working", "waiting", "idle", "suspended", "stopped"] as const;
+const STATE_FILTERS = ["all", "working", "waiting", "idle", "suspended", "stopped"] as const;
 type AgentStateFilter = (typeof STATE_FILTERS)[number];
 
 const STATE_LABELS: Record<AgentStateFilter, string> = {
+  all: "All",
   working: "Working",
   waiting: "Waiting",
   idle: "Idle",
@@ -37,6 +38,12 @@ interface AgentRowProps {
 /** One selectable row in the master list. */
 function AgentRow({ agent, selected, onSelect }: AgentRowProps) {
   const tone = agentStateClasses(agent.state);
+  const bead = agent.activeBeadSummary;
+  const beadTypeClass = bead?.type === "bug"
+    ? "bg-destructive/10 text-destructive"
+    : bead?.type === "molecule"
+      ? "bg-[var(--brand-weak)] text-[var(--brand)]"
+      : "bg-[var(--surface-2)] text-[var(--text-2)]";
   return (
     <li>
       <button
@@ -45,23 +52,49 @@ function AgentRow({ agent, selected, onSelect }: AgentRowProps) {
         aria-current={selected ? "true" : undefined}
         title={agent.suspended ? agent.unavailableReason ?? undefined : undefined}
         onClick={() => onSelect(agent.name)}
-        className={`flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left text-[13px] transition-colors ${
+        className={`flex w-full flex-col gap-1 border-l-2 px-3 py-2 text-left text-[13px] transition-colors ${
           selected
             ? "border-[var(--brand)] bg-[var(--brand-weak)]"
             : "border-transparent hover:bg-[var(--surface-2)]"
         }`}
       >
-        <span
-          aria-hidden
-          data-state={agent.state}
-          className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${tone.dot} ${
-            tone.pulse ? "animate-pulse motion-reduce:animate-none" : ""
-          }`}
-        />
-        <span className="min-w-0 flex-1 truncate font-medium">{agent.shortName}</span>
-        <span className="flex-shrink-0 text-[11px] text-[var(--text-3)]">
-          {agent.lastActivity ? relTime(agent.lastActivity) : "—"}
+        <span className="flex w-full min-w-0 items-center gap-2">
+          <span
+            aria-hidden
+            data-state={agent.state}
+            className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${tone.dot} ${
+              tone.pulse ? "animate-pulse motion-reduce:animate-none" : ""
+            }`}
+          />
+          <span className="min-w-0 flex-1 truncate font-medium">{agent.shortName}</span>
+          <span className="flex-shrink-0 text-[11px] text-[var(--text-3)]">
+            {agent.lastActivity ? relTime(agent.lastActivity) : "—"}
+          </span>
         </span>
+        {agent.activeBead && (
+          <span data-testid="agent-row-bead" className="flex w-full min-w-0 items-center gap-[5px] pl-[15px] text-[12px] whitespace-nowrap">
+            {bead && (
+              <>
+                {bead.type !== null && (
+                  <span className={`flex-shrink-0 rounded-[4px] px-[5px] text-[10px] font-semibold ${beadTypeClass}`}>
+                    {bead.type}
+                  </span>
+                )}
+                <span title={bead.title} className={`min-w-0 flex-1 truncate ${!agent.running ? "text-[var(--text-2)]" : ""}`}>
+                  {bead.title}
+                </span>
+                {bead.priority !== null && (
+                  <span className="flex-shrink-0 rounded-[4px] border border-border px-[4px] text-[10px] text-[var(--text-2)]">
+                    P{bead.priority}
+                  </span>
+                )}
+              </>
+            )}
+            <span className="flex-shrink-0 font-mono text-[10.5px] text-[var(--text-3)]">
+              {bead?.id ?? agent.activeBead}
+            </span>
+          </span>
+        )}
       </button>
     </li>
   );
@@ -533,7 +566,7 @@ export function AgentsView() {
   const rawStateFilter = searchParams.get("agentsState");
   const stateFilter = STATE_FILTERS.includes(rawStateFilter as AgentStateFilter)
     ? (rawStateFilter as AgentStateFilter)
-    : null;
+    : "all";
   const selectedName = searchParams.get("agent");
   const [filter, setFilter] = React.useState("");
   const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>({});
@@ -577,8 +610,7 @@ export function AgentsView() {
 
   const toggleState = (state: AgentStateFilter) => {
     updateUrl((params) => {
-      if (params.get("agentsState") === state) params.delete("agentsState");
-      else params.set("agentsState", state);
+      params.set("agentsState", state === stateFilter ? "all" : state);
     }, "replace");
   };
 
@@ -589,10 +621,10 @@ export function AgentsView() {
   }, []);
 
   const needle = filter.trim().toLowerCase();
-  const narrowing = needle !== "" || stateFilter !== null;
+  const narrowing = needle !== "" || stateFilter !== "all";
   const visibleAgents = agents.filter(
     (agent) =>
-      (stateFilter === null || agent.state === stateFilter) &&
+      (stateFilter === "all" || agent.state === stateFilter) &&
       (needle === "" || agent.shortName.toLowerCase().includes(needle)),
   );
 
@@ -670,22 +702,24 @@ export function AgentsView() {
           className="flex flex-wrap items-center gap-1 border-b border-border px-4 py-2"
         >
           {STATE_FILTERS.map((state) => {
-            const count = agents.filter((agent) => agent.state === state).length;
-            const tone = agentStateClasses(state);
+            const count = state === "all" ? agents.length : agents.filter((agent) => agent.state === state).length;
+            const dot = state === "all" ? "bg-[var(--text-3)]" : agentStateClasses(state).dot;
             return (
-              <button
-                key={state}
-                type="button"
-                data-agent-state={state}
-                aria-pressed={stateFilter === state}
-                aria-label={`${STATE_LABELS[state]} (${count})`}
-                onClick={() => toggleState(state)}
-                className="flex items-center gap-[6px] rounded-[7px] px-2 py-[3px] text-[11.5px] text-[var(--text-2)] hover:bg-[var(--surface-2)] aria-pressed:bg-[var(--brand-weak)] aria-pressed:text-[var(--brand)]"
-              >
-                <span aria-hidden data-state={state} className={`h-[7px] w-[7px] rounded-full ${tone.dot}`} />
-                <span>{STATE_LABELS[state]}</span>
-                <span className="text-[var(--text-3)]">{count}</span>
-              </button>
+              <React.Fragment key={state}>
+                <button
+                  type="button"
+                  data-agent-state={state}
+                  aria-pressed={stateFilter === state}
+                  aria-label={`${STATE_LABELS[state]} (${count})`}
+                  onClick={() => toggleState(state)}
+                  className="flex items-center gap-[6px] rounded-[7px] px-2 py-[3px] text-[11.5px] text-[var(--text-2)] hover:bg-[var(--surface-2)] aria-pressed:bg-[var(--brand-weak)] aria-pressed:text-[var(--brand)]"
+                >
+                  <span aria-hidden data-state={state} className={`h-[7px] w-[7px] rounded-full ${dot}`} />
+                  <span>{STATE_LABELS[state]}</span>
+                  <span className="text-[var(--text-3)]">{count}</span>
+                </button>
+                {state === "all" && <span aria-hidden className="mx-1 h-4 w-px bg-border" />}
+              </React.Fragment>
             );
           })}
         </div>

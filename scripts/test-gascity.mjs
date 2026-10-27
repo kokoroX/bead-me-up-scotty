@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { agentType, createCityAgentsCache, parseAgentOutputQuery, parseRigMap, polecatPoolName, rigForProject, toAgentOutput, toProjectAgents } from "../lib/gascity-agents.ts";
+import { agentType, attachBeadSummaries, createCityAgentsCache, parseAgentOutputQuery, parseRigMap, polecatPoolName, rigForProject, toAgentOutput, toBeadSummary, toProjectAgents } from "../lib/gascity-agents.ts";
 
 const rig = "jikerental";
 const agent = (name, extra = {}) => ({ name: `${rig}/${name}`, rig, ...extra });
@@ -59,6 +59,7 @@ assert.deepEqual(full, {
   provider: "claude",
   lastActivity,
   activeBead: "jkr-y124",
+  activeBeadSummary: null,
   unavailableReason: "agent is suspended",
   contextPct: 42.5,
   contextWindow: 200_000,
@@ -91,7 +92,7 @@ const [minimal] = toProjectAgents({ items: [agent("minimal")] }, rig);
 assert.deepEqual(minimal, {
   name: "jikerental/minimal", shortName: "minimal", pool: null, state: "unknown",
   running: false, suspended: false, activity: null, model: null, provider: null,
-  lastActivity: null, activeBead: null, unavailableReason: null,
+  lastActivity: null, activeBead: null, activeBeadSummary: null, unavailableReason: null,
   contextPct: null, contextWindow: null,
 });
 const [nullable] = toProjectAgents({ items: [agent("nullable", {
@@ -109,6 +110,75 @@ for (const raw of [null, [], {}, { items: null }, { items: {} }, { items: [{}] }
   { items: [agent("bad", { pool: [] })] }]) {
   assert.throws(() => toProjectAgents(raw, rig), "malformed responses must throw");
 }
+
+const wispBead = {
+  id: "jkr-wisp-azwm", title: "mol-refinery-patrol", status: "in_progress",
+  issue_type: "molecule", ephemeral: true, metadata: {},
+};
+const taskBead = { id: "jkr-y124", title: "Fixture task", status: "open", issue_type: "task", priority: 2 };
+assert.deepEqual(toBeadSummary(wispBead), {
+  id: wispBead.id, title: wispBead.title, status: "in_progress", type: "molecule", priority: null,
+});
+assert.deepEqual(toBeadSummary(taskBead), {
+  id: taskBead.id, title: taskBead.title, status: "open", type: "task", priority: 2,
+});
+assert.deepEqual(toBeadSummary({ id: "minimal", title: "Minimal", status: "open" }), {
+  id: "minimal", title: "Minimal", status: "open", type: null, priority: null,
+});
+assert.throws(() => toBeadSummary({ id: "no-title", status: "open" }));
+for (const priority of [-1, 5, 1.5, "2"]) {
+  assert.throws(() => toBeadSummary({ ...taskBead, priority }));
+}
+
+const summaryAgents = toProjectAgents({ items: [
+  agent("a", { active_bead: wispBead.id }),
+  agent("b", { active_bead: wispBead.id }),
+  agent("c", { active_bead: "missing" }),
+  agent("d", { active_bead: taskBead.id }),
+  agent("e"),
+  agent("f", { active_bead: "invalid" }),
+  agent("g", { active_bead: "" }),
+] }, rig);
+const originalAgents = structuredClone(summaryAgents);
+summaryAgents.forEach(Object.freeze);
+Object.freeze(summaryAgents);
+const beadLoads = [];
+const beadWarnings = [];
+const warn = console.warn;
+let enriched;
+try {
+  console.warn = (message) => beadWarnings.push(message);
+  // Defer resolution so every unique id must start loading before any completes.
+  const pendingBeads = [];
+  const attaching = attachBeadSummaries(summaryAgents, (id) => new Promise((resolve, reject) => {
+    beadLoads.push(id);
+    pendingBeads.push(() => {
+      if (id === "missing") reject(new Error("HTTP 404"));
+      else resolve(id === "invalid" ? { id, status: "open" } : id === wispBead.id ? wispBead : taskBead);
+    });
+  }));
+  assert.deepEqual(beadLoads, [wispBead.id, "missing", taskBead.id, "invalid"]);
+  pendingBeads.forEach((complete) => complete());
+  enriched = await attaching;
+} finally {
+  console.warn = warn;
+}
+assert.deepEqual(summaryAgents, originalAgents, "summary attachment does not modify input agents");
+assert.notEqual(enriched, summaryAgents);
+assert.deepEqual(enriched.map((entry) => entry.name), summaryAgents.map((entry) => entry.name));
+enriched.forEach((entry, index) => assert.notEqual(entry, summaryAgents[index]));
+assert.deepEqual(enriched[0].activeBeadSummary, toBeadSummary(wispBead));
+assert.deepEqual(enriched[1].activeBeadSummary, toBeadSummary(wispBead));
+assert.equal(enriched[2].activeBeadSummary, null, "a failed loader leaves only that bead unresolved");
+assert.deepEqual(enriched[3].activeBeadSummary, toBeadSummary(taskBead));
+assert.equal(enriched[4].activeBeadSummary, null);
+assert.equal(enriched[5].activeBeadSummary, null, "invalid bead data is isolated too");
+assert.equal(enriched[6].activeBeadSummary, null);
+assert.equal(beadWarnings.length, 2);
+assert.match(beadWarnings[0], /missing.*HTTP 404/);
+assert.match(beadWarnings[1], /invalid.*title/);
+assert.ok(beadWarnings.every((message) => !message.includes("\n")), "each bead failure logs one line");
+assert.deepEqual(await attachBeadSummaries([], async () => assert.fail("empty agents must not load beads")), []);
 
 assert.deepEqual(parseRigMap("projA=rigA,projB=rigB"), { projA: "rigA", projB: "rigB" });
 assert.deepEqual(parseRigMap(" projA = rigA , projB = rigB "), { projA: "rigA", projB: "rigB" });
@@ -223,4 +293,4 @@ for (const tail of ["", "-1", "51", "1.5", "NaN", "Infinity", " 1", "1e1", "1x"]
   assert.throws(() => parseAgentOutputQuery({ agent: "a", tail }));
 }
 
-console.log("PASS: agents normalization/context fields, rig mapping, grouping, city cache, output schema/camelCase pagination, and agent/before/tail validation");
+console.log("PASS: agents normalization/context fields, active bead summaries/deduplication/failure isolation, rig mapping, grouping, city cache, output schema/camelCase pagination, and agent/before/tail validation");

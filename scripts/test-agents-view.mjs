@@ -28,6 +28,7 @@ const agent = (shortName, extra = {}) => ({
   provider: "claude",
   lastActivity: "2026-10-26T11:56:16+08:00",
   activeBead: null,
+  activeBeadSummary: null,
   unavailableReason: null,
   contextPct: null,
   contextWindow: null,
@@ -35,8 +36,14 @@ const agent = (shortName, extra = {}) => ({
 });
 const systemAgent = (shortName, extra = {}) => agent(shortName, { pool: null, ...extra });
 const agents = [
-  agent("backend.furiosa", { activeBead: bead.id, contextPct: 42, contextWindow: 200_000 }),
-  agent("backend.wisp-worker", { state: "waiting", activeBead: "jkr-wisp-az4g" }),
+  agent("backend.furiosa", {
+    activeBead: bead.id, contextPct: 42, contextWindow: 200_000,
+    activeBeadSummary: { id: bead.id, title: bead.title, status: bead.status, type: "task", priority: 2 },
+  }),
+  agent("backend.wisp-worker", {
+    state: "waiting", activeBead: "jkr-wisp-az4g",
+    activeBeadSummary: { id: "jkr-wisp-az4g", title: "mol-witness-patrol", status: "in_progress", type: "molecule", priority: null },
+  }),
   agent("backend.stopped", { state: "stopped", running: false, activity: null }),
   agent("backend.suspended", { state: "suspended", running: false, suspended: true, unavailableReason: "agent is suspended", activeBead: bead.id }),
   agent("miniapp.worker", { pool: "jikerental/miniapp.polecat", state: "idle" }),
@@ -124,6 +131,21 @@ try {
   assert.equal(outputRequests[0].agent, agents[0].shortName, "output requests use the short name");
   assert.match(await detail.getByTestId("agent-context-meter").innerText(), /42%/);
   assert.match(await detail.getByTestId("agent-context-meter").innerText(), /84k \/ 200k tokens/);
+  const states = main.getByTestId("agents-state-filter");
+  const allChip = states.locator('[data-agent-state="all"]');
+  assert.equal(await allChip.getAttribute("aria-pressed"), "true", "All is selected without a state parameter");
+  assert.equal(await allChip.getAttribute("aria-label"), `All (${agents.length})`);
+  const taskSummary = row("backend.furiosa").getByTestId("agent-row-bead");
+  assert.match(await taskSummary.innerText(), /Agents fixture bead/);
+  assert.match(await taskSummary.innerText(), /P2/);
+  assert.match(await taskSummary.innerText(), /jkr-y124/);
+  assert.equal(await taskSummary.getByText(bead.title, { exact: true }).getAttribute("title"), bead.title);
+  const wispSummary = row("backend.wisp-worker").getByTestId("agent-row-bead");
+  assert.match(await wispSummary.innerText(), /molecule/);
+  assert.match(await wispSummary.innerText(), /mol-witness-patrol/);
+  assert.doesNotMatch(await wispSummary.innerText(), /P/);
+  assert.equal(await row("backend.stopped").getByTestId("agent-row-bead").count(), 0);
+  assert.equal((await row("backend.suspended").getByTestId("agent-row-bead").textContent()).trim(), bead.id, "missing summaries fall back to the bead id");
 
   // Four structured turn types remain plain text; thoughts and results collapse.
   assert.equal(await conversation.getByTestId("agent-turn").count(), 4);
@@ -230,7 +252,6 @@ try {
   assert.equal(await main.locator("[data-agent-name]").count(), 2);
   assert.equal(await row("miniapp.worker").isVisible(), true);
   await filter.fill("");
-  const states = main.getByTestId("agents-state-filter");
   // Each state dot carries its data-state and a distinct accent: working is the
   // brand color, waiting amber, idle blue, stopped grey. Suspended is a hollow
   // dashed ring rather than a filled dot.
@@ -248,14 +269,30 @@ try {
     "suspended is a hollow dashed ring",
   );
   const historyLength = await page.evaluate(() => history.length);
+  const waitingChip = states.getByRole("button", { name: "Waiting (1)", exact: true });
+  await waitingChip.click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "waiting");
+  assert.equal(await waitingChip.getAttribute("aria-pressed"), "true");
+  assert.equal(await main.locator("[data-agent-name]").count(), 1);
+  assert.equal(await row("backend.wisp-worker").isVisible(), true);
+  await waitingChip.click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "all");
+  assert.equal(await allChip.getAttribute("aria-pressed"), "true");
+  assert.equal(await main.locator("[data-agent-name]").count(), agents.length);
+  await states.getByRole("button", { name: "Working (2)", exact: true }).click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "working");
+  await allChip.click();
+  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "all");
+  assert.equal(await main.locator("[data-agent-name]").count(), agents.length);
   await states.getByRole("button", { name: "Suspended (1)", exact: true }).click();
   await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "suspended");
   assert.equal(await main.locator("[data-agent-name]").count(), 1);
   assert.equal(await row("backend.suspended").isVisible(), true);
   assert.equal(await page.evaluate(() => history.length), historyLength);
   await states.getByRole("button", { name: "Suspended (1)", exact: true }).click();
-  await page.waitForFunction(() => !new URL(location.href).searchParams.has("agentsState"));
-  assert.equal(await main.locator("[data-agent-name]").count(), 9);
+  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "all");
+  assert.equal(await allChip.getAttribute("aria-pressed"), "true");
+  assert.equal(await main.locator("[data-agent-name]").count(), agents.length);
   await filter.fill("does-not-exist");
   await main.getByText("No matching agents.", { exact: true }).waitFor();
   await filter.fill("");
@@ -324,6 +361,20 @@ try {
   await detail.getByRole("heading", { name: "ledger.stopped", exact: true }).waitFor();
   assert.equal(await row("ledger.stopped").getAttribute("aria-current"), "true", "selection survives reload");
 
+  const allUrl = new URL(url);
+  allUrl.searchParams.set("agentsState", "all");
+  await page.goto(allUrl.href);
+  await detail.getByRole("heading", { name: agents[0].shortName, exact: true }).waitFor();
+  assert.equal(await allChip.getAttribute("aria-pressed"), "true", "explicit all URLs select All");
+  assert.equal(await main.locator("[data-agent-name]").count(), agents.length);
+  assert.equal(await backend.locator("details").getAttribute("open"), null, "All does not force stopped groups open");
+  const unknownStateUrl = new URL(url);
+  unknownStateUrl.searchParams.set("agentsState", "future-state");
+  await page.goto(unknownStateUrl.href);
+  await detail.getByRole("heading", { name: agents[0].shortName, exact: true }).waitFor();
+  assert.equal(await allChip.getAttribute("aria-pressed"), "true", "unknown states fall back to All");
+  assert.equal(await main.locator("[data-agent-name]").count(), agents.length);
+
   // Transcript failures and missing fields leave the master list usable.
   outputResponse = { configured: true, available: false };
   await page.goto(url.href);
@@ -375,7 +426,7 @@ try {
   assert.equal(await page.getByTestId("bead-agent-badge").count(), 0);
 
   assert.deepEqual(writes, [], "agents, transcripts and bead inspection never write project data");
-  console.log("PASS: master/detail selection, persistent URL, structured/plain transcripts, older pages, context meter, filters, type/status grouping, drawer jump, transcript/list errors, missing fields and read-only behavior");
+  console.log("PASS: master/detail selection, active bead row summaries, All/state filters, persistent URL, structured/plain transcripts, older pages, context meter, type/status grouping, drawer jump, transcript/list errors, missing fields and read-only behavior");
 } catch (error) {
   console.error({ url: page?.url(), body: page ? (await page.locator("body").innerText()).slice(0, 3000) : "" });
   throw error;

@@ -24,6 +24,23 @@ const agentsSchema = z.object({
   total: z.number().nullable().optional(),
 }).passthrough();
 
+const beadSummarySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string(),
+  issue_type: z.string().nullable().optional(),
+  priority: z.number().int().min(0).max(4).nullable().optional(),
+}).passthrough();
+
+/** Active bead details resolved from Gas City, including ephemeral wisps. */
+export interface ActiveBeadSummary {
+  id: string;
+  title: string;
+  status: string;
+  type: string | null;
+  priority: number | null;
+}
+
 /** Project-scoped, read-only Gas City agent view model. */
 export interface GascityAgent {
   name: string;
@@ -37,6 +54,7 @@ export interface GascityAgent {
   provider: string | null;
   lastActivity: string | null;
   activeBead: string | null;
+  activeBeadSummary: ActiveBeadSummary | null;
   unavailableReason: string | null;
   contextPct: number | null;
   contextWindow: number | null;
@@ -88,6 +106,7 @@ export function toProjectAgents(raw: unknown, rig: string): GascityAgent[] {
     provider: agent.provider ?? null,
     lastActivity: agent.session?.last_activity ?? null,
     activeBead: agent.active_bead ?? null,
+    activeBeadSummary: null,
     unavailableReason: agent.unavailable_reason ?? null,
     contextPct: agent.context_pct ?? null,
     contextWindow: agent.context_window ?? null,
@@ -96,6 +115,39 @@ export function toProjectAgents(raw: unknown, rig: string): GascityAgent[] {
     stateOrder(a.state) - stateOrder(b.state) ||
     a.name.localeCompare(b.name),
   );
+}
+
+/** Validate a Gas City bead and normalize its optional summary fields. */
+export function toBeadSummary(raw: unknown): ActiveBeadSummary {
+  const bead = beadSummarySchema.parse(raw);
+  return {
+    id: bead.id,
+    title: bead.title,
+    status: bead.status,
+    type: bead.issue_type ?? null,
+    priority: bead.priority ?? null,
+  };
+}
+
+/** Resolve unique active beads concurrently without failing the agents response. */
+export async function attachBeadSummaries(
+  agents: GascityAgent[],
+  load: (id: string) => Promise<unknown>,
+): Promise<GascityAgent[]> {
+  const ids = [...new Set(agents.map((agent) => agent.activeBead).filter((id): id is string => !!id))];
+  const summaries = new Map<string, ActiveBeadSummary>();
+  await Promise.all(ids.map(async (id) => {
+    try {
+      summaries.set(id, toBeadSummary(await load(id)));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`gascity bead ${id} summary failed: ${message.replace(/\s+/g, " ")}`);
+    }
+  }));
+  return agents.map((agent) => ({
+    ...agent,
+    activeBeadSummary: agent.activeBead ? summaries.get(agent.activeBead) ?? null : null,
+  }));
 }
 
 /** Cache validated city responses for ten seconds and share in-flight requests. */
