@@ -4,6 +4,8 @@ import { ZodError } from "zod";
 import { BdError } from "./bd";
 import { ConfigError } from "./config";
 
+export { okJson } from "./json-response";
+
 export function ok(data: unknown, init?: number) {
   return NextResponse.json(data, { status: init ?? 200 });
 }

@@ -1,27 +1,28 @@
 import { getStore } from "@/lib/store";
 import { getConfig, isReadOnly, lanePrefix } from "@/lib/config";
 import { createInputSchema } from "@/lib/schema";
-import { ok, fail } from "@/lib/api";
+import { slimBeadList } from "@/lib/bead-list";
+import { ok, okJson, fail } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ projectId: string }> };
 
-export async function GET(_req: Request, { params }: Ctx) {
+export async function GET(req: Request, { params }: Ctx) {
   try {
     const { projectId } = await params;
     const store = await getStore(projectId);
     const cfg = getConfig();
     const beads = await store.list();
-    return ok({
-      beads,
+    return okJson(req, {
+      beads: slimBeadList(beads),
       meta: {
         kind: store.kind,
         humanActor: cfg.humanActor,
         humanAllowlist: cfg.humanAllowlist,
         pollIntervalMs: cfg.pollIntervalMs,
         gamification: cfg.gamification,
-        readOnly: isReadOnly(_req),
+        readOnly: isReadOnly(req),
         lanePrefix: lanePrefix(),
       },
     });

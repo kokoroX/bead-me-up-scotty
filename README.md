@@ -118,6 +118,11 @@ detail links, and read-only protections also work in the grouped layout.
   (`bd … --json`, `BD_JSON_ENVELOPE=1`). `bd` stays the single source of truth —
   the app adds **zero** new persisted schema. The only adapter is
   [`lib/bd.ts`](lib/bd.ts); see the spec in [`design/design.md`](design/design.md).
+- **The project list stays small.** Closed beads arrive as a summary
+  (`summary_only`, `comment_count`, `checklist`) instead of carrying their full
+  description, notes, design, acceptance criteria, metadata and comments; the
+  detail drawer fetches the full bead on demand. The list endpoint also gzips
+  its JSON when the client accepts gzip.
 - The UI was designed in **Claude Design** and rebuilt faithfully here with
   Next.js + shadcn/Tailwind. The original export and a screen/token map live in
   [`design/ui-export/`](design/ui-export/).

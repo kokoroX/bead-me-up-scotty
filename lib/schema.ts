@@ -128,6 +128,12 @@ export const beadSchema = z
     comment_count: z.number().optional(),
     parent: z.string().nullable().optional(),
     /**
+     * List-only summary of a closed bead (see lib/bead-list.ts): its body
+     * fields are absent, so the drawer fetches the full bead on demand.
+     */
+    summary_only: z.boolean().optional(),
+    checklist: z.object({ done: z.number(), total: z.number() }).optional(),
+    /**
      * Planning/reference fields `bd export --json` emits when set (verified
      * against bd 1.3.0). Read-only in the UI for now; listed here because zod
      * strips unknown keys and the detail drawer can opt into showing them.

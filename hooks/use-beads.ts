@@ -7,6 +7,7 @@ import {
 import { toast } from "sonner";
 import { toastError } from "@/components/error-toast";
 import { api, type BeadsResponse } from "@/lib/api-client";
+import { beadSchema } from "@/lib/schema";
 import type { Bead, BeadRef, CreateInput, UpdateInput, DepType } from "@/lib/schema";
 import { useApp } from "@/components/app-context";
 
@@ -19,6 +20,23 @@ export function useBeads(projectId: string) {
     queryKey: beadsKey(projectId),
     queryFn: () => api.list(projectId),
     refetchInterval: (q) => q.state.data?.meta.pollIntervalMs ?? 5000,
+  });
+}
+
+/**
+ * Full bead for one id. The list only carries a summary of closed beads, so the
+ * drawer fetches the body on demand. Keyed under beadsKey so every existing
+ * list invalidation (SSE change, mutation onSettled) refreshes it too.
+ */
+export function useBeadDetail(projectId: string, id: string | null) {
+  return useQuery({
+    queryKey: [...beadsKey(projectId), "detail", id] as const,
+    queryFn: async () => {
+      const parsed = beadSchema.safeParse(await api.get(projectId, id!));
+      if (!parsed.success) throw new Error(`Invalid bead ${id}`);
+      return parsed.data;
+    },
+    enabled: !!id,
   });
 }
 
