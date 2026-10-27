@@ -34,6 +34,7 @@ import {
   type DetailFieldVisibility,
 } from "@/lib/bead-fields";
 import {
+  useBeadDetail,
   useUpdateBead,
   useSetStatus,
   useAddComment,
@@ -86,6 +87,7 @@ const labelChipClass =
   "inline-flex items-center gap-[5px] rounded-md border border-border bg-[var(--surface-2)] px-[6px] py-[2px] font-mono text-[10.5px] text-[var(--text-3)]";
 
 type DisplayedBlockingDepType = Exclude<BlockingDepType, "parent-child">;
+type DetailState = "ready" | "loading" | "error";
 
 type DependencyRow = {
   key: string;
@@ -146,8 +148,22 @@ export function BeadDetailDrawer({
   initialAction?: DetailAction;
   actionNonce?: number;
 }) {
-  const { index, readOnly } = useApp();
-  const bead = openId ? index.get(openId) : undefined;
+  const { index, readOnly, projectId } = useApp();
+  const listBead = openId ? index.get(openId) : undefined;
+  // Closed beads arrive from the list as a summary; fetch the full bead while
+  // the drawer is open. Only summary beads remount when the detail lands, so
+  // their drafts start from full data while open beads keep in-progress edits.
+  const detail = useBeadDetail(projectId, openId);
+  // Wait for the list before opening, just as AppShell does when validating a
+  // deep link. Opening from an early detail response hides the loading shell
+  // from assistive tech before the board's live region has mounted.
+  const bead = listBead ? detail.data ?? listBead : undefined;
+  const detailState: DetailState =
+    !listBead?.summary_only || detail.data
+      ? "ready"
+      : detail.isError && !detail.isFetching
+        ? "error"
+        : "loading";
   // ~50% wider than the old 480px default; drag the left edge to resize (persisted).
   const { width, startResize } = useResizableWidth({
     storageKey: "bmus.width.drawer",
@@ -172,13 +188,15 @@ export function BeadDetailDrawer({
         <div className="bd-scroll min-w-0 flex-1 overflow-y-auto">
           {bead ? (
             <DrawerBody
-              key={`${bead.id}-${actionNonce}`}
+              key={`${bead.id}-${actionNonce}-${listBead?.summary_only && detail.data ? "detail" : "list"}`}
               bead={bead}
               initialAction={readOnly ? "view" : initialAction}
               canGoBack={!!canGoBack}
               backTo={backTo ?? null}
               onBack={onBack}
               onClose={onClose}
+              detailState={detailState}
+              onRetryDetails={() => detail.refetch()}
             />
           ) : (
             <SheetTitle className="sr-only">Bead details</SheetTitle>
@@ -196,6 +214,8 @@ function DrawerBody({
   backTo,
   onBack,
   onClose,
+  detailState,
+  onRetryDetails,
 }: {
   bead: Bead;
   initialAction: DetailAction;
@@ -203,6 +223,8 @@ function DrawerBody({
   backTo: string | null;
   onBack?: () => void;
   onClose: () => void;
+  detailState: DetailState;
+  onRetryDetails: () => void;
 }) {
   const { index, beads, humanAllowlist, meta, projectId, pushDetail, openCreate, readOnly } =
     useApp();
@@ -280,7 +302,9 @@ function DrawerBody({
   }, [closing]);
 
   // Inline edit of title + description (with image drop/paste on the textarea).
-  const [editing, setEditing] = React.useState(!readOnly && initialAction === "edit");
+  const [editing, setEditing] = React.useState(
+    !readOnly && initialAction === "edit" && detailState === "ready",
+  );
   const [previousReadOnly, setPreviousReadOnly] = React.useState(readOnly);
   if (previousReadOnly !== readOnly) {
     setPreviousReadOnly(readOnly);
@@ -423,6 +447,7 @@ function DrawerBody({
         {!readOnly && (
           <IconBtn
             title={editing ? "Stop editing" : "Edit title & description"}
+            disabled={detailState !== "ready"}
             onClick={editing ? cancelEdit : startEdit}
           >
             <Icon name="pencil" size={15} />
@@ -625,7 +650,31 @@ function DrawerBody({
           />
         )}
 
-        <DetailsGrid bead={bead} show={show} />
+        <DetailsGrid bead={bead} show={show} showMetadata={show.metadata && detailState === "ready"} />
+
+        {detailState === "loading" && (
+          <div
+            data-testid="detail-loading"
+            className="mb-4 rounded-[10px] border border-border bg-[var(--surface-2)] p-[12px_13px] text-[13.5px] text-[var(--text-3)]"
+          >
+            Loading details…
+          </div>
+        )}
+        {detailState === "error" && (
+          <div
+            data-testid="detail-load-error"
+            className="mb-4 flex items-center gap-3 rounded-[10px] border border-destructive/40 bg-destructive/5 p-[12px_13px] text-[13.5px] text-destructive"
+          >
+            <span className="flex-1">Couldn’t load details.</span>
+            <button
+              type="button"
+              onClick={onRetryDetails}
+              className="h-8 rounded-lg border border-destructive/40 px-3 text-[12.5px] font-[550] hover:bg-destructive/10"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
 
         {closing && !readOnly && (
@@ -669,7 +718,7 @@ function DrawerBody({
           </div>
         )}
 
-        {(show.description || (editing && !readOnly)) && (
+        {detailState === "ready" && (show.description || (editing && !readOnly)) && (
           <Section>
             <div className={`${fieldLabel} mb-[6px] flex items-center gap-2`}>
               <span>Description</span>
@@ -1019,7 +1068,7 @@ function DrawerBody({
           </Section>
         )}
 
-        {show.design && design && (
+        {detailState === "ready" && show.design && design && (
           <Section>
             <Header icon="pencil" label="Design" />
             <DescriptionContent
@@ -1030,7 +1079,7 @@ function DrawerBody({
           </Section>
         )}
 
-        {show.acceptance_criteria && acceptance && (
+        {detailState === "ready" && show.acceptance_criteria && acceptance && (
           <Section>
             <Header icon="target" label="Acceptance criteria" />
             <DescriptionContent
@@ -1041,7 +1090,7 @@ function DrawerBody({
           </Section>
         )}
 
-        {show.notes && notes && (
+        {detailState === "ready" && show.notes && notes && (
           <Section>
             <Header icon="list" label="Notes" />
             <DescriptionContent
@@ -1064,7 +1113,7 @@ function DrawerBody({
         )}
 
         {/* Comments */}
-        {show.comments && (
+        {detailState === "ready" && show.comments && (
           <Section>
             <Header icon="comment" label="Comments" count={comments.length} />
             <div className="mb-3 flex flex-col gap-3">
@@ -1327,16 +1376,19 @@ function IconBtn({
   title,
   onClick,
   danger,
+  disabled,
 }: {
   children: React.ReactNode;
   title: string;
   onClick: () => void;
   danger?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
       title={title}
       onClick={onClick}
+      disabled={disabled}
       className={
         danger
           ? "flex h-8 w-8 items-center justify-center rounded-lg border border-border text-[var(--text-2)] hover:border-[#ef444433] hover:bg-[#ef444415] hover:text-[#ef4444]"
@@ -1366,10 +1418,18 @@ const DETAIL_GRID_KEYS = [
  * appears only when switched on in the Fields menu; a switched-on field with no
  * value shows "—" so turning it on always visibly does something.
  */
-function DetailsGrid({ bead, show }: { bead: Bead; show: DetailFieldVisibility }) {
+function DetailsGrid({
+  bead,
+  show,
+  showMetadata,
+}: {
+  bead: Bead;
+  show: DetailFieldVisibility;
+  showMetadata: boolean;
+}) {
   const keys = DETAIL_GRID_KEYS.filter((k) => show[k]);
   const metadata = Object.entries(bead.metadata ?? {});
-  if (keys.length === 0 && !show.metadata) return null;
+  if (keys.length === 0 && !showMetadata) return null;
   const label = (k: DetailFieldKey) => DETAIL_FIELDS.find((f) => f.key === k)?.label ?? k;
   const date = (iso: string | null | undefined) =>
     iso ? <span title={relTime(iso)}>{fmtDateTime(iso)}</span> : null;
@@ -1419,7 +1479,7 @@ function DetailsGrid({ bead, show }: { bead: Bead; show: DetailFieldVisibility }
           </span>
         </div>
       ))}
-      {show.metadata && (
+      {showMetadata && (
         <div className="col-span-2 flex min-w-0 flex-col gap-[5px]">
           <span className={fieldLabel}>Metadata</span>
           {metadata.length ? (

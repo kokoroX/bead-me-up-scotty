@@ -84,8 +84,8 @@ function BeadCardFace({ bead, childCount, preview = false }: { bead: Bead; child
   const blocked = isBlocked(bead, index);
   const visLabels = (bead.labels ?? []).filter((l) => l !== "archived").slice(0, 2);
   const depCount = (bead.dependencies ?? []).filter((d) => d.type !== "parent-child").length;
-  const commentCount = (bead.comments ?? []).length;
-  const checklist = checklistProgress(bead.description);
+  const commentCount = bead.comment_count ?? (bead.comments ?? []).length;
+  const checklist = bead.checklist ?? checklistProgress(bead.description);
 
   return (
     <>
