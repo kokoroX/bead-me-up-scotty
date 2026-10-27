@@ -172,8 +172,25 @@ export function BeadDetailDrawer({
     max: 1200,
     deltaFactor: -1,
   });
+  // Set by the body while an edit or comment holds unsaved text, so a stray
+  // click outside the drawer keeps it; Esc and the Close button still close.
+  const dirtyRef = React.useRef(false);
   return (
-    <Sheet open={!!openId && !!bead} onOpenChange={(open) => !open && onClose()}>
+    <Sheet
+      open={!!openId && !!bead}
+      onOpenChange={(open, details) => {
+        if (open) return;
+        if (details.reason === "outside-press" && dirtyRef.current) {
+          details.cancel();
+          toast("You have unsaved changes", {
+            id: "drawer-unsaved",
+            description: "Save them, or press Esc to close without saving.",
+          });
+          return;
+        }
+        onClose();
+      }}
+    >
       <SheetContent
         showCloseButton={false}
         style={{ width, maxWidth: "96vw" }}
@@ -197,6 +214,7 @@ export function BeadDetailDrawer({
               onClose={onClose}
               detailState={detailState}
               onRetryDetails={() => detail.refetch()}
+              dirtyRef={dirtyRef}
             />
           ) : (
             <SheetTitle className="sr-only">Bead details</SheetTitle>
@@ -216,6 +234,7 @@ function DrawerBody({
   onClose,
   detailState,
   onRetryDetails,
+  dirtyRef,
 }: {
   bead: Bead;
   initialAction: DetailAction;
@@ -225,6 +244,7 @@ function DrawerBody({
   onClose: () => void;
   detailState: DetailState;
   onRetryDetails: () => void;
+  dirtyRef: React.RefObject<boolean>;
 }) {
   const { index, beads, humanAllowlist, meta, projectId, pushDetail, openCreate, readOnly } =
     useApp();
@@ -328,6 +348,16 @@ function DrawerBody({
     value: descDraft,
     onChange: setDescDraft,
   });
+
+  const unsaved =
+    (editing && (titleDraft !== bead.title || descDraft !== (bead.description ?? ""))) ||
+    [draft, closeDraft, gateReason].some((text) => text.trim() !== "");
+  React.useEffect(() => {
+    dirtyRef.current = unsaved;
+    return () => {
+      dirtyRef.current = false;
+    };
+  }, [dirtyRef, unsaved]);
 
   const startEdit = () => {
     if (readOnly) return;

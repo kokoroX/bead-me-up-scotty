@@ -305,9 +305,11 @@ export const api = {
     /** Map an `attachment://<beadId>/<file>` ref to its serve URL. */
     urlFor: (projectId: string, ref: string) => {
       const rel = ref.replace(/^attachment:\/\//, "");
+      // encodeURIComponent leaves "." and ".." alone, and the browser would
+      // resolve them, steering a ref from bead text to another same-origin URL.
       const encoded = rel
         .split("/")
-        .filter(Boolean)
+        .filter((segment) => segment && segment !== "." && segment !== "..")
         .map(encodeURIComponent)
         .join("/");
       return `${base(projectId)}/attachments/${encoded}`;
