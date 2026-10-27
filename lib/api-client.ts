@@ -218,7 +218,8 @@ export const api = {
     request<BeadRef>(`${base(projectId)}/beads/${enc(id)}/archive`, { method: "POST" }),
   doctor: (projectId: string) => request<DoctorResponse>(`${base(projectId)}/doctor`),
 
-  activity: (projectId: string) => request<ActivityResponse>(`${base(projectId)}/activity`),
+  activity: (projectId: string, includeWisps = false) =>
+    request<ActivityResponse>(`${base(projectId)}/activity${includeWisps ? "?wisps=1" : ""}`),
   agents: async (projectId: string): Promise<AgentsResponse> => {
     const data = await request<Partial<AgentsResponse> | null>(`${base(projectId)}/agents`);
     return {

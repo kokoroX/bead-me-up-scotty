@@ -1,5 +1,6 @@
 "use client";
 import * as React from "react";
+import { useUrlState } from "@/hooks/use-url-state";
 import { useApp } from "@/components/app-context";
 import { useActivity } from "@/hooks/use-beads";
 import { OriginBadge } from "@/components/board/bead-card";
@@ -14,8 +15,17 @@ import { avatarColor, initials, relTime, fmtDateTime } from "@/lib/beads-view";
  */
 export function ActivityView() {
   const { projectId, openDetail, selectedBeadId, selectBead } = useApp();
-  const { data, isLoading } = useActivity(projectId);
+  const { searchParams, updateUrl } = useUrlState();
+  const includeWisps = searchParams.get("activityWisps") === "1";
+  const { data, isLoading } = useActivity(projectId, { includeWisps });
   const items = data?.items ?? [];
+
+  const toggleWisps = () => {
+    updateUrl((params) => {
+      if (includeWisps) params.delete("activityWisps");
+      else params.set("activityWisps", "1");
+    }, "replace");
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -25,6 +35,14 @@ export function ActivityView() {
         <span className="text-[12px] text-[var(--text-3)]">
           · what humans and agents did, newest first
         </span>
+        <button
+          type="button"
+          aria-pressed={includeWisps}
+          onClick={toggleWisps}
+          className="ml-auto h-8 rounded-[8px] border border-border px-3 text-[12px] aria-pressed:border-[var(--brand)] aria-pressed:bg-[var(--brand-weak)] aria-pressed:text-[var(--brand)]"
+        >
+          Show wisps
+        </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {isLoading && items.length === 0 ? (

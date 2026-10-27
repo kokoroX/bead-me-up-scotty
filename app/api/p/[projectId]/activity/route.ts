@@ -9,7 +9,7 @@ type Ctx = { params: Promise<{ projectId: string }> };
 
 /** Recent activity for a project: status/priority transitions (from the
  *  interaction log) plus creations and comments (from the beads themselves). */
-export async function GET(_req: Request, { params }: Ctx) {
+export async function GET(req: Request, { params }: Ctx) {
   try {
     const { projectId } = await params;
     const store = await getStore(projectId);
@@ -22,7 +22,8 @@ export async function GET(_req: Request, { params }: Ctx) {
     const repoPath = project && "path" in project ? project.path : null;
     const events = repoPath ? readInteractions(repoPath) : [];
 
-    const items = buildActivity(beads, events, cfg.humanAllowlist).slice(0, 150);
+    const includeWisps = new URL(req.url).searchParams.get("wisps") === "1";
+    const items = buildActivity(beads, events, cfg.humanAllowlist, { includeWisps }).slice(0, 150);
     return ok({ items });
   } catch (e) {
     return fail(e);

@@ -42,10 +42,13 @@ export function useBeadDetail(projectId: string, id: string | null) {
 
 /** Recent activity feed for a project. Invalidated by the SSE stream on change;
  *  the interval is just a fallback. */
-export function useActivity(projectId: string) {
+export function useActivity(
+  projectId: string,
+  { includeWisps = false }: { includeWisps?: boolean } = {},
+) {
   return useQuery({
-    queryKey: activityKey(projectId),
-    queryFn: () => api.activity(projectId),
+    queryKey: includeWisps ? [...activityKey(projectId), "wisps"] : activityKey(projectId),
+    queryFn: () => api.activity(projectId, includeWisps),
     refetchInterval: 20000,
   });
 }
