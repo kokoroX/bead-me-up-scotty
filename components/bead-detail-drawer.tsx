@@ -436,7 +436,7 @@ function DrawerBody({
   const closeReason = closeReasonOf(bead);
   const comments = bead.comments ?? [];
   const activity = [
-    { label: `Created by ${bead.created_by || "unknown"}`, time: fmtDate(bead.created_at) },
+    { label: `Created by ${bead.created_by || "system"}`, time: fmtDate(bead.created_at) },
     bead.updated_at ? { label: "Last updated", time: fmtDate(bead.updated_at) } : null,
     bead.closed_at ? { label: "Closed", time: fmtDate(bead.closed_at) } : null,
   ].filter(Boolean) as { label: string; time: string }[];

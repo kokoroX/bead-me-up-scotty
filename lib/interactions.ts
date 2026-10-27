@@ -58,6 +58,11 @@ export function readInteractions(repoPath: string): RawInteraction[] {
   return out;
 }
 
+// bd's wisp ID convention includes "-wisp-", including child step IDs.
+export function isWispId(id: string): boolean {
+  return id.includes("-wisp-");
+}
+
 const PRIORITY_LABELS = ["Critical", "High", "Medium", "Low", "Backlog"];
 
 function statusAction(v?: string): string {
@@ -96,7 +101,7 @@ function mapFieldChange(ev: RawInteraction, title: string, origin: Origin): Acti
     id: ev.id ?? `${ev.issue_id}-${ev.created_at}`,
     issueId: ev.issue_id ?? "",
     title,
-    actor: ev.actor ?? "unknown",
+    actor: ev.actor || "system",
     origin,
     action,
     detail,
@@ -115,6 +120,7 @@ export function buildActivity(
   beads: Bead[],
   events: RawInteraction[],
   humanAllowlist: string[],
+  { includeWisps = false }: { includeWisps?: boolean } = {},
 ): ActivityItem[] {
   const byId = new Map(beads.map((b) => [b.id, b]));
   const items: ActivityItem[] = [];
@@ -135,7 +141,7 @@ export function buildActivity(
         id: `${b.id}-created`,
         issueId: b.id,
         title: b.title,
-        actor: b.created_by || "unknown",
+        actor: b.created_by || "system",
         origin: originOf(b.created_by, humanAllowlist),
         action: "created",
         at: b.created_at,
@@ -147,7 +153,7 @@ export function buildActivity(
         id: `${b.id}-comment-${i}`,
         issueId: b.id,
         title: b.title,
-        actor: c.author || "unknown",
+        actor: c.author || "system",
         origin: originOf(c.author, humanAllowlist),
         action: "commented",
         detail: c.text?.slice(0, 120),
@@ -159,7 +165,7 @@ export function buildActivity(
         id: `${b.id}-closed`,
         issueId: b.id,
         title: b.title,
-        actor: b.assignee || b.created_by || "unknown",
+        actor: b.assignee || b.created_by || "system",
         origin: originOf(b.assignee || b.created_by, humanAllowlist),
         action: "closed",
         at: b.closed_at,
@@ -169,5 +175,5 @@ export function buildActivity(
 
   // newest first
   items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  return items;
+  return includeWisps ? items : items.filter((item) => !isWispId(item.issueId));
 }
