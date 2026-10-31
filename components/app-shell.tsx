@@ -317,6 +317,8 @@ export function AppShell({ projectId }: { projectId: string }) {
         projectId={projectId}
         readOnly={readOnly}
         selectedId={selectedBeadId}
+        // Until the beads load, openId is still the raw ?bead= value from the URL.
+        openId={openId && index.has(openId) ? openId : null}
         selectIdAction={selectBead}
         setViewAction={setView}
         openDetailAction={openDetail}

@@ -268,29 +268,36 @@ try {
     "dashed",
     "suspended is a hollow dashed ring",
   );
+  // Next 16.4 reflects native history updates before the filter UI commits.
+  // Wait for the rendered chip too before checking filtered rows.
+  const waitForState = (state) => page.waitForFunction((expected) =>
+    new URL(location.href).searchParams.get("agentsState") === expected &&
+    document.querySelector(`[data-agent-state="${expected}"]`)?.getAttribute("aria-pressed") === "true",
+    state,
+  );
   const historyLength = await page.evaluate(() => history.length);
   const waitingChip = states.getByRole("button", { name: "Waiting (1)", exact: true });
   await waitingChip.click();
-  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "waiting");
+  await waitForState("waiting");
   assert.equal(await waitingChip.getAttribute("aria-pressed"), "true");
   assert.equal(await main.locator("[data-agent-name]").count(), 1);
   assert.equal(await row("backend.wisp-worker").isVisible(), true);
   await waitingChip.click();
-  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "all");
+  await waitForState("all");
   assert.equal(await allChip.getAttribute("aria-pressed"), "true");
   assert.equal(await main.locator("[data-agent-name]").count(), agents.length);
   await states.getByRole("button", { name: "Working (2)", exact: true }).click();
-  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "working");
+  await waitForState("working");
   await allChip.click();
-  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "all");
+  await waitForState("all");
   assert.equal(await main.locator("[data-agent-name]").count(), agents.length);
   await states.getByRole("button", { name: "Suspended (1)", exact: true }).click();
-  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "suspended");
+  await waitForState("suspended");
   assert.equal(await main.locator("[data-agent-name]").count(), 1);
   assert.equal(await row("backend.suspended").isVisible(), true);
   assert.equal(await page.evaluate(() => history.length), historyLength);
   await states.getByRole("button", { name: "Suspended (1)", exact: true }).click();
-  await page.waitForFunction(() => new URL(location.href).searchParams.get("agentsState") === "all");
+  await waitForState("all");
   assert.equal(await allChip.getAttribute("aria-pressed"), "true");
   assert.equal(await main.locator("[data-agent-name]").count(), agents.length);
   await filter.fill("does-not-exist");

@@ -24,7 +24,7 @@ try{
   if(path.endsWith('/beads/stream'))return route.abort();
   return route.fulfill({json:path.endsWith('/beads')?{beads,meta:{kind:'demo',humanActor:'reviewer',humanAllowlist:['reviewer'],pollIntervalMs:300000}}:{}});
  });
- const open=async()=>{await page.goto(`${base}/p/demo`);await page.getByRole('button',{name:'Needs You',exact:true}).click();await page.getByText('Links & attachments',{exact:true}).waitFor();};
+ const open=async()=>{await page.goto(`${base}/p/demo`);await page.getByRole('button',{name:/^Needs You/}).click();await page.getByText('Links & attachments',{exact:true}).waitFor();};
  await open();
  const card=page.locator('[data-keyboard-bead-id="decision"]');
  const links=await card.locator('[data-review-links] a').evaluateAll(as=>as.map(a=>({href:a.getAttribute('href'),target:a.target,rel:a.rel})));
@@ -37,6 +37,8 @@ try{
  assert.equal(await page.getByRole('button',{name:'Approve',exact:true}).isDisabled(),true,'read-only approval guard remains');
  await context.request.put(`${base}/api/viewer-mode`,{data:{readOnly:false}});await open();
  assert.equal(await page.getByRole('button',{name:'Approve',exact:true}).isEnabled(),true,'absence of links does not become an approval gate');
+ await page.goto(`${base}/p/demo?bead=decision`);await page.getByText('Links & attachments',{exact:true}).waitFor();
+ assert.equal(await page.locator('[data-slot="sheet-content"] [data-review-links] a').count(),5,'the detail drawer shows the same links');
  assert.deepEqual(errors,[]);
- console.log('PASS: supporting link discovery, Markdown delimiters, local attachments, safe schemes, read-only access and non-gating empty state');
+ console.log('PASS: supporting link discovery, drawer links, Markdown delimiters, local attachments, safe schemes, read-only access and non-gating empty state');
 }finally{await browser.close();}

@@ -11,7 +11,7 @@ import { useNotificationPrefs, type NotifPrefs } from "@/hooks/use-notifications
 import { useBoardPrefs } from "@/hooks/use-board-prefs";
 import { useDefaultFocus } from "@/hooks/use-default-view";
 import { ViewerModeSetting } from "@/components/read-only-banner";
-import { KEYBOARD_SHORTCUT_GROUPS } from "@/lib/keyboard-shortcuts";
+import { KEYBOARD_SHORTCUT_GROUPS, isSubmitKey } from "@/lib/keyboard-shortcuts";
 import { KeyboardHelpDialog, ShortcutKeys } from "@/components/keyboard-help-dialog";
 
 import { UsageStatisticsSetting } from "@/components/usage-statistics";
@@ -116,6 +116,11 @@ function SettingsForm({ data }: { data: DoctorResponse }) {
     },
     onError: (e) => toast.error((e as Error).message),
   });
+  const saveOnSubmitKey = (e: React.KeyboardEvent) => {
+    if (!isSubmitKey(e)) return;
+    e.preventDefault();
+    if (!save.isPending) save.mutate();
+  };
 
   const isDemo = data.kind === "demo";
 
@@ -150,7 +155,12 @@ function SettingsForm({ data }: { data: DoctorResponse }) {
           <span className="text-[12px] text-[var(--text-2)]">
             Human actor (stamps <span className="font-mono">BEADS_ACTOR</span>)
           </span>
-          <input className={inputClass} value={actor} onChange={(e) => setActor(e.target.value)} />
+          <input
+            className={inputClass}
+            value={actor}
+            onChange={(e) => setActor(e.target.value)}
+            onKeyDown={saveOnSubmitKey}
+          />
         </label>
         <div className="flex flex-col gap-[7px]">
           <span className="text-[12px] text-[var(--text-2)]">
@@ -206,6 +216,7 @@ function SettingsForm({ data }: { data: DoctorResponse }) {
               value={pollSec}
               onChange={(e) => setPollSec(e.target.value)}
               onBlur={() => setPollSec(String(clampSec(pollSec)))}
+              onKeyDown={saveOnSubmitKey}
               aria-label="Fallback refresh interval in seconds"
               className={`${inputClass} w-[72px] text-right font-mono`}
             />
