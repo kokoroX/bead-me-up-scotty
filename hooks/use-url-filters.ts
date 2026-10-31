@@ -23,15 +23,29 @@ function sameFacets(a: Filters, b: Filters): boolean {
 /** Shared, URL-backed Board/List filter state. */
 export function useUrlFilters() {
   const { searchParams, updateUrl } = useUrlState();
-  const filters = React.useMemo(
+  const urlFilters = React.useMemo(
     () => filtersFromSearchParams(searchParams),
     [searchParams],
+  );
+  // The search box is a controlled input, but useSearchParams can reflect a
+  // history update a render later (Next 16.4). Rendering the stale URL value
+  // in between resets the input and drops keystrokes, so hold what was typed
+  // until the URL catches up. Back/forward drops it, since only the URL knows
+  // where the browser went.
+  const [pendingSearch, setPendingSearch] = React.useState<string | null>(null);
+  if (pendingSearch !== null && pendingSearch === urlFilters.search) setPendingSearch(null);
+  const filters = React.useMemo(
+    () => (pendingSearch === null ? urlFilters : { ...urlFilters, search: pendingSearch }),
+    [urlFilters, pendingSearch],
   );
   const showArchived = searchParams.get("archived") === "1";
 
   const searchEntry = React.useRef<string | null>(null);
   React.useEffect(() => {
-    const reset = () => { searchEntry.current = null; };
+    const reset = () => {
+      searchEntry.current = null;
+      setPendingSearch(null);
+    };
     window.addEventListener("popstate", reset);
     return () => window.removeEventListener("popstate", reset);
   }, []);
@@ -40,6 +54,7 @@ export function useUrlFilters() {
     (next: Filters) => {
       const searchOnly = sameFacets(filters, next) && filters.search !== next.search;
       const mode = searchOnly && searchEntry.current === window.location.href ? "replace" : "push";
+      setPendingSearch(next.search);
       updateUrl((params) => writeFiltersToSearchParams(params, next), mode);
       searchEntry.current = searchOnly ? window.location.href : null;
     },
@@ -57,6 +72,7 @@ export function useUrlFilters() {
   );
 
   const clearFilters = React.useCallback(() => {
+    setPendingSearch("");
     updateUrl((params) => {
       writeFiltersToSearchParams(params, emptyFilters);
       params.delete("archived");

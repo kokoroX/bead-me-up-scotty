@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Icon } from "@/components/icons";
 import { useApp } from "@/components/app-context";
 import { api } from "@/lib/api-client";
+import { isSubmitKey } from "@/lib/keyboard-shortcuts";
 
 const TEMPLATES = [
   { id: "manager", name: "Manager Dashboard", blurb: "Stats-forward hero + highlights. Warm & fuzzy for managers." },
@@ -112,6 +113,11 @@ export function PublishView() {
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (!isSubmitKey(e)) return;
+                  e.preventDefault();
+                  if (!readOnly && !build.isPending) build.mutate();
+                }}
                 className="h-[38px] rounded-[9px] border border-border bg-[var(--surface-2)] px-3 text-[13.5px] text-[var(--text)] outline-none focus:border-[var(--brand)]"
                 placeholder="Look at my productivity 😄"
               />

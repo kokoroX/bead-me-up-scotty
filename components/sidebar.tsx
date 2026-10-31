@@ -17,6 +17,8 @@ import { useGamification } from "@/hooks/use-beads";
 import { GITHUB_REPO } from "@/lib/build-info";
 import { BuildBadge } from "@/components/build-badge";
 import { UpdateIndicator } from "@/components/update-indicator";
+import { ResizeHandle } from "@/components/resize-handle";
+import { useResizableWidth } from "@/hooks/use-resizable-width";
 import { cn } from "@/lib/utils";
 import { navViews } from "@/lib/views";
 
@@ -63,13 +65,18 @@ export function Sidebar({
   const needsYouCount =
     beads.filter(needsHuman).length + beads.filter((b) => readyHumanGate(b, index)).length;
   const game = useGamification(projectId, !!meta?.gamification);
+  const { width, startResize } = useSidebarWidth();
 
   return (
-    <aside className={cn(
-      mobile
-        ? "flex h-full w-full min-w-0 flex-col overflow-y-auto border-0 bg-[var(--surface)] p-[18px_14px]"
-        : "hidden w-[228px] flex-shrink-0 flex-col border-r border-border bg-[var(--surface)] p-[18px_14px] md:flex",
-    )}>
+    <aside
+      style={mobile ? undefined : { width }}
+      className={cn(
+        mobile
+          ? "flex h-full w-full min-w-0 flex-col overflow-y-auto border-0 bg-[var(--surface)] p-[18px_14px]"
+          : "relative hidden flex-shrink-0 flex-col border-r border-border bg-[var(--surface)] p-[18px_14px] md:flex",
+      )}
+    >
+      {!mobile && <ResizeHandle label="Resize sidebar" onPointerDown={startResize} className="right-0" />}
       <div className="flex items-center gap-[10px] px-2 pb-[18px] pt-1">
         <div
           className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-[9px] text-white"
@@ -184,4 +191,24 @@ export function Sidebar({
       </div>
     </aside>
   );
+}
+
+const DEFAULT_WIDTH = 228;
+
+function subscribeNever() {
+  return () => {};
+}
+
+function useSidebarWidth() {
+  const { width, startResize } = useResizableWidth({
+    storageKey: "bmus.width.sidebar",
+    defaultWidth: DEFAULT_WIDTH,
+    min: 180,
+    max: 400,
+    deltaFactor: 1,
+  });
+  // The sidebar renders on the server, which can't see the saved width, so
+  // apply it only after hydration or React reports a markup mismatch.
+  const hydrated = React.useSyncExternalStore(subscribeNever, () => true, () => false);
+  return { width: hydrated ? width : DEFAULT_WIDTH, startResize };
 }

@@ -61,7 +61,16 @@ try {
   };
   const expectIds = async (view, wanted, message) => {
     for (const id of wanted) await page.getByTitle(`Copy ${id}`, { exact: true }).waitFor();
-    assert.deepEqual(await cardIds(view), [...wanted].sort(), `${view}: ${message}`);
+    // The wanted cards may already be showing before a filter has removed the
+    // others, so wait for the exact set rather than reading it once.
+    const want = [...wanted].sort();
+    const deadline = Date.now() + 5000;
+    let got = await cardIds(view);
+    while (JSON.stringify(got) !== JSON.stringify(want) && Date.now() < deadline) {
+      await page.waitForTimeout(50);
+      got = await cardIds(view);
+    }
+    assert.deepEqual(got, want, `${view}: ${message}`);
   };
   const selectAssignees = async (...names) => {
     await assignee().click();

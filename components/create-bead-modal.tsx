@@ -16,6 +16,7 @@ import { useResizableWidth } from "@/hooks/use-resizable-width";
 import { DescriptionContent, hasImageRef } from "@/components/description-content";
 import { api } from "@/lib/api-client";
 import { typeLabel } from "@/lib/beads-view";
+import { isSubmitKey } from "@/lib/keyboard-shortcuts";
 import { BEAD_TYPES, type BeadType } from "@/lib/schema";
 
 const inputClass =
@@ -233,7 +234,7 @@ function CreateForm({
   });
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      if (isSubmitKey(e)) {
         e.preventDefault();
         submitRef.current();
       }

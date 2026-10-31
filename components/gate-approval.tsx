@@ -5,6 +5,7 @@ import { useApp } from "@/components/app-context";
 import { Icon } from "@/components/icons";
 import { toastError } from "@/components/error-toast";
 import { api } from "@/lib/api-client";
+import { isSubmitKey } from "@/lib/keyboard-shortcuts";
 import { beadsKey, activityKey } from "@/hooks/use-beads";
 
 /** Shared by both human-gate surfaces; approval records an explicit decision. */
@@ -65,6 +66,11 @@ export function GateApproval({ id }: { id: string }) {
           placeholder="Optional approval note"
           value={note}
           onChange={event => setNote(event.target.value)}
+          onKeyDown={event => {
+            if (!isSubmitKey(event)) return;
+            event.preventDefault();
+            approve();
+          }}
           disabled={readOnly || approval.isPending}
           maxLength={8000}
           rows={2}
