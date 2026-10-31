@@ -896,7 +896,7 @@ function DrawerBody({
           </Section>
         )}
 
-        {links.length > 0 && (
+        {detailState === "ready" && show.links && links.length > 0 && (
           <Section>
             <Header icon="link" label="Links & attachments" count={links.length} />
             <ReviewLinkChips links={links} />
