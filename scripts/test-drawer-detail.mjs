@@ -42,7 +42,7 @@ const fullClosed = {
   summary_only: undefined,
   checklist: undefined,
   description: "Detailed closed description",
-  notes: "Detailed closed notes",
+  notes: "Detailed closed notes https://github.com/kokoroX/bead-me-up-scotty/pull/1",
   design: "Detailed closed design",
   acceptance_criteria: "Detailed closed acceptance",
   metadata: { owner: "fixture" },
@@ -99,9 +99,22 @@ try {
   const dialog = page.getByRole("dialog");
   await dialog.getByTestId("detail-loading").waitFor();
   assert.match(await dialog.getByTestId("detail-loading").innerText(), /Loading details/);
+  const linksSectionHeader = dialog.locator("span", { hasText: /^Links & attachments$/ }).locator("..");
+  assert.equal(await linksSectionHeader.count(), 0, "links section stays hidden while details load");
   await dialog.getByText("Detailed closed description", { exact: true }).waitFor();
   assert.equal(await dialog.getByTestId("detail-loading").count(), 0);
   assert.match(await dialog.getByText("Detailed closed comment", { exact: true }).innerText(), /Detailed closed comment/);
+  await linksSectionHeader.waitFor();
+  assert.equal(await linksSectionHeader.locator("..").getByRole("link", { name: /github\.com\/kokoroX\/bead-me-up-scotty\/pull\/1/ }).count(), 1);
+
+  // The drawer Fields menu toggles the same preference used by Settings.
+  await dialog.getByRole("button", { name: "Choose which fields to show" }).click();
+  const linksMenuItem = page.getByRole("menuitemcheckbox", { name: "Links & attachments", exact: true });
+  assert.equal(await linksMenuItem.getAttribute("aria-checked"), "true");
+  await linksMenuItem.click();
+  await linksSectionHeader.waitFor({ state: "detached" });
+  await linksMenuItem.click();
+  await linksSectionHeader.waitFor();
   assert.equal(detailRequests, 1);
 
   // A failed detail fetch keeps the header and offers a retry.
@@ -176,7 +189,7 @@ try {
   assert.equal(await banner.count(), 1, "the viewer-mode banner remains in the accessibility tree with the drawer open");
   assert.deepEqual(errors, []);
 
-  console.log("PASS: closed drawer loads details on demand, reports loading/failure with retry, open beads retain edit drafts, and early details wait for the list without hiding the viewer-mode banner");
+  console.log("PASS: closed drawer loads details on demand, gates and toggles Links & attachments, reports loading/failure with retry, open beads retain edit drafts, and early details wait for the list without hiding the viewer-mode banner");
 } catch (error) {
   console.error({ errors, url: page?.url(), body: page ? (await page.locator("body").innerText()).slice(0, 3000) : "" });
   throw error;

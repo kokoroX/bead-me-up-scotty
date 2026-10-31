@@ -36,6 +36,7 @@ export const DETAIL_FIELDS = [
   { key: "acceptance_criteria", label: "Acceptance criteria", group: "content", defaultVisible: true },
   { key: "notes", label: "Notes", group: "content", defaultVisible: true },
   { key: "close_reason", label: "Close reason", group: "content", defaultVisible: true },
+  { key: "links", label: "Links & attachments", group: "content", defaultVisible: true },
 
   { key: "dependencies", label: "Dependencies", group: "relations", defaultVisible: true },
   { key: "subtasks", label: "Subtasks", group: "relations", defaultVisible: true },
