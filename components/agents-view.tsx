@@ -1,8 +1,9 @@
 "use client";
 import * as React from "react";
+import { AgentConversation } from "@/components/agents/agent-conversation";
+import { AgentList } from "@/components/agents/agent-list";
 import { useApp } from "@/components/app-context";
 import { Icon } from "@/components/icons";
-import { useAgentOutput } from "@/hooks/use-agent-output";
 import { useAgents } from "@/hooks/use-agents";
 import { useBeads } from "@/hooks/use-beads";
 import { useUrlState } from "@/hooks/use-url-state";
@@ -10,12 +11,11 @@ import { agentStateClasses } from "@/lib/agent-state";
 import { relTime } from "@/lib/beads-view";
 import {
   polecatPoolName,
-  type AgentTurn,
+  STATE_ORDER,
   type GascityAgent,
 } from "@/lib/gascity-agents";
-import type { AgentOutputResponse } from "@/lib/api-client";
 
-const STATE_FILTERS = ["all", "working", "waiting", "idle", "suspended", "stopped"] as const;
+const STATE_FILTERS = ["all", ...STATE_ORDER] as const;
 type AgentStateFilter = (typeof STATE_FILTERS)[number];
 
 const STATE_LABELS: Record<AgentStateFilter, string> = {
@@ -29,229 +29,8 @@ const STATE_LABELS: Record<AgentStateFilter, string> = {
 
 type DetailTab = "conversation" | "details";
 
-interface AgentRowProps {
-  agent: GascityAgent;
-  selected: boolean;
-  onSelect: (name: string) => void;
-}
-
-/** One selectable row in the master list. */
-function AgentRow({ agent, selected, onSelect }: AgentRowProps) {
-  const tone = agentStateClasses(agent.state);
-  const bead = agent.activeBeadSummary;
-  const beadTypeClass = bead?.type === "bug"
-    ? "bg-destructive/10 text-destructive"
-    : bead?.type === "molecule"
-      ? "bg-[var(--brand-weak)] text-[var(--brand)]"
-      : "bg-[var(--surface-2)] text-[var(--text-2)]";
-  return (
-    <li>
-      <button
-        type="button"
-        data-agent-name={agent.name}
-        aria-current={selected ? "true" : undefined}
-        title={agent.suspended ? agent.unavailableReason ?? undefined : undefined}
-        onClick={() => onSelect(agent.name)}
-        className={`flex w-full flex-col gap-1 border-l-2 px-3 py-2 text-left text-[13px] transition-colors ${
-          selected
-            ? "border-[var(--brand)] bg-[var(--brand-weak)]"
-            : "border-transparent hover:bg-[var(--surface-2)]"
-        }`}
-      >
-        <span className="flex w-full min-w-0 items-center gap-2">
-          <span
-            aria-hidden
-            data-state={agent.state}
-            className={`h-[7px] w-[7px] flex-shrink-0 rounded-full ${tone.dot} ${
-              tone.pulse ? "animate-pulse motion-reduce:animate-none" : ""
-            }`}
-          />
-          <span className="min-w-0 flex-1 truncate font-medium">{agent.shortName}</span>
-          <span className="flex-shrink-0 text-[11px] text-[var(--text-3)]">
-            {agent.lastActivity ? relTime(agent.lastActivity) : "—"}
-          </span>
-        </span>
-        {agent.activeBead && (
-          <span data-testid="agent-row-bead" className="flex w-full min-w-0 items-center gap-[5px] pl-[15px] text-[12px] whitespace-nowrap">
-            {bead && (
-              <>
-                {bead.type !== null && (
-                  <span className={`flex-shrink-0 rounded-[4px] px-[5px] text-[10px] font-semibold ${beadTypeClass}`}>
-                    {bead.type}
-                  </span>
-                )}
-                <span title={bead.title} className={`min-w-0 flex-1 truncate ${!agent.running ? "text-[var(--text-2)]" : ""}`}>
-                  {bead.title}
-                </span>
-                {bead.priority !== null && (
-                  <span className="flex-shrink-0 rounded-[4px] border border-border px-[4px] text-[10px] text-[var(--text-2)]">
-                    P{bead.priority}
-                  </span>
-                )}
-              </>
-            )}
-            <span className="flex-shrink-0 font-mono text-[10.5px] text-[var(--text-3)]">
-              {bead?.id ?? agent.activeBead}
-            </span>
-          </span>
-        )}
-      </button>
-    </li>
-  );
-}
-
-function AgentRows({
-  agents,
-  selectedName,
-  onSelect,
-}: {
-  agents: GascityAgent[];
-  selectedName: string | null;
-  onSelect: (name: string) => void;
-}) {
-  return (
-    <ul className="border-t border-border">
-      {agents.map((agent) => (
-        <AgentRow
-          key={agent.name}
-          agent={agent}
-          selected={agent.name === selectedName}
-          onSelect={onSelect}
-        />
-      ))}
-    </ul>
-  );
-}
-
-interface GroupProps extends Omit<React.ComponentProps<"details">, "open" | "onToggle"> {
-  groupKey: string;
-  defaultOpen: boolean;
-  forcedOpen: boolean;
-  openGroups: Record<string, boolean>;
-  onToggle: (key: string, open: boolean) => void;
-  label: React.ReactNode;
-  children: React.ReactNode;
-}
-
-/** A native disclosure whose open state survives polling re-renders. */
-function Group({
-  groupKey,
-  defaultOpen,
-  forcedOpen,
-  openGroups,
-  onToggle,
-  label,
-  children,
-  className = "",
-  ...rest
-}: GroupProps) {
-  const open = forcedOpen || (openGroups[groupKey] ?? defaultOpen);
-  return (
-    <details
-      {...rest}
-      data-group-key={groupKey}
-      open={open}
-      onToggle={(event) => onToggle(groupKey, event.currentTarget.open)}
-      className={`rounded-[10px] border border-border ${className}`}
-    >
-      <summary className="cursor-pointer px-3 py-[9px] text-[12.5px] font-semibold text-[var(--text-2)]">
-        {label}
-      </summary>
-      {children}
-    </details>
-  );
-}
-
-/** Title for a type or pool section, for example `System (14 · 9 running)`. */
-function groupTitle(label: string, agents: GascityAgent[]): string {
-  const running = agents.filter((agent) => agent.running).length;
-  return `${label} (${agents.length} · ${running} running)`;
-}
-
 function formatTokens(value: number): string {
   return value >= 1000 ? `${Math.round(value / 1000)}k` : String(value);
-}
-
-function flattenTurns(pages: AgentOutputResponse[] | undefined): AgentTurn[] {
-  if (!pages) return [];
-  const turns: AgentTurn[] = [];
-  const seen = new Set<string>();
-  for (const page of [...pages].reverse()) {
-    for (const turn of page.turns) {
-      if (turn.id) {
-        if (seen.has(turn.id)) continue;
-        seen.add(turn.id);
-      }
-      turns.push(turn);
-    }
-  }
-  return turns;
-}
-
-function firstLine(text: string, limit = 60): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > limit ? `${flat.slice(0, limit)}…` : flat;
-}
-
-/** Render one transcript turn as plain text, a thought, a tool tag or a result. */
-function Turn({ turn }: { turn: AgentTurn }) {
-  const isUser = turn.role === "user";
-  const text = turn.text;
-  const trimmed = text.trimStart();
-  let body: React.ReactNode;
-
-  if (trimmed.startsWith("[thinking]")) {
-    const thought = trimmed.slice("[thinking]".length).trim();
-    body = (
-      <details className="text-[12px] text-[var(--text-3)]">
-        <summary className="cursor-pointer italic">Thinking…</summary>
-        <div className="mt-1 whitespace-pre-wrap text-[12.5px] text-[var(--text-2)]">
-          {thought}
-        </div>
-      </details>
-    );
-  } else if (isUser && trimmed.startsWith("[result]")) {
-    const result = trimmed.slice("[result]".length).trim();
-    body = (
-      <details className="text-[12px] text-[var(--text-2)]">
-        <summary className="cursor-pointer">{firstLine(result) || "Result"}</summary>
-        <div className="mt-1 whitespace-pre-wrap text-[12.5px] text-[var(--text)]">
-          {result}
-        </div>
-      </details>
-    );
-  } else {
-    const tool = trimmed.match(/^\[([A-Za-z0-9_.:-]+)\]$/);
-    if (tool) {
-      body = (
-        <span className="inline-flex items-center rounded-[5px] border border-border bg-[var(--surface-2)] px-[6px] py-px font-mono text-[11px] text-[var(--text-2)]">
-          {tool[1]}
-        </span>
-      );
-    } else {
-      body = (
-        <div className="whitespace-pre-wrap text-[12.5px] leading-[1.5] text-[var(--text)]">
-          {text}
-        </div>
-      );
-    }
-  }
-
-  return (
-    <div data-testid="agent-turn" data-role={turn.role} className="flex gap-[9px]">
-      <span
-        aria-hidden
-        className={`mt-px flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-[7px] ${
-          isUser
-            ? "bg-[var(--surface-2)] text-[var(--text-2)]"
-            : "bg-[var(--brand-weak)] text-[var(--brand)]"
-        }`}
-      >
-        <Icon name={isUser ? "user" : "bot"} size={13} />
-      </span>
-      <div className="min-w-0 flex-1 pt-[2px]">{body}</div>
-    </div>
-  );
 }
 
 interface AgentDetailProps {
@@ -264,20 +43,11 @@ interface AgentDetailProps {
 /** Right-hand pane: agent summary, context meter, transcript and raw details. */
 function AgentDetail({ agent, rig, beadIds, openBead }: AgentDetailProps) {
   const { projectId } = useApp();
-  const output = useAgentOutput(projectId, agent);
   const [tab, setTab] = React.useState<DetailTab>("conversation");
   const tabRefs = React.useRef<Record<DetailTab, HTMLButtonElement | null>>({
     conversation: null,
     details: null,
   });
-  const scrollRef = React.useRef<HTMLDivElement>(null);
-  const stickToBottom = React.useRef(true);
-  const initialScroll = React.useRef(true);
-  const olderScroll = React.useRef<{ height: number; top: number; pages: number } | null>(null);
-
-  const pages = output.data?.pages;
-  const first = pages?.[0];
-  const turns = React.useMemo(() => flattenTurns(pages), [pages]);
   const tone = agentStateClasses(agent.state);
   const poolName = polecatPoolName(agent.pool, rig);
   const typeLabel = poolName === null ? "System" : `Polecat · ${poolName}`;
@@ -287,32 +57,6 @@ function AgentDetail({ agent, rig, beadIds, openBead }: AgentDetailProps) {
     contextPct !== null && contextWindow !== null
       ? Math.round((contextWindow * contextPct) / 100)
       : null;
-
-  React.useLayoutEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    const older = olderScroll.current;
-    if (older && (pages?.length ?? 0) > older.pages) {
-      element.scrollTop = older.top + element.scrollHeight - older.height;
-      olderScroll.current = null;
-    } else if (initialScroll.current || (!older && stickToBottom.current)) {
-      element.scrollTop = element.scrollHeight;
-      initialScroll.current = false;
-    }
-  }, [pages, tab]);
-
-  const loadOlder = async () => {
-    const element = scrollRef.current;
-    if (element) {
-      olderScroll.current = {
-        height: element.scrollHeight,
-        top: element.scrollTop,
-        pages: pages?.length ?? 0,
-      };
-    }
-    const result = await output.fetchNextPage();
-    if (result.isError) olderScroll.current = null;
-  };
 
   const tabs: DetailTab[] = ["conversation", "details"];
   const selectTab = (next: DetailTab) => {
@@ -446,69 +190,7 @@ function AgentDetail({ agent, rig, beadIds, openBead }: AgentDetailProps) {
       </div>
 
       {tab === "conversation" ? (
-        <div
-          role="tabpanel"
-          id="agent-panel-conversation"
-          aria-labelledby="agent-tab-conversation"
-          data-testid="agent-conversation"
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          {output.isError ? (
-            <div role="alert" className="p-5 text-[13px] text-destructive">
-              {(output.error as Error).message}
-            </div>
-          ) : output.isLoading ? (
-            <div className="p-5 text-[13px] text-[var(--text-3)]">Loading transcript…</div>
-          ) : first && !first.configured ? (
-            <div className="p-5 text-[13px] text-[var(--text-3)]">
-              Gas City is not configured.
-            </div>
-          ) : first && !first.available ? (
-            <div className="p-5 text-[13px] text-[var(--text-3)]">
-              No transcript for this agent.
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-3 border-b border-border px-4 py-2 text-[11.5px] text-[var(--text-3)]">
-                <span>
-                  Last {turns.length} turns · {first?.pagination.total ?? turns.length} messages
-                </span>
-                {output.hasNextPage && (
-                  <button
-                    type="button"
-                    data-testid="agent-load-older"
-                    disabled={output.isFetchingNextPage}
-                    onClick={() => void loadOlder()}
-                    className="rounded-[6px] border border-border px-2 py-[2px] text-[11.5px] text-[var(--text-2)] hover:border-[var(--brand)] hover:text-[var(--brand)] disabled:opacity-50"
-                  >
-                    {output.isFetchingNextPage ? "Loading…" : "Load older"}
-                  </button>
-                )}
-              </div>
-              <div
-                ref={scrollRef}
-                onScroll={(event) => {
-                  const element = event.currentTarget;
-                  stickToBottom.current =
-                    element.scrollHeight - element.scrollTop - element.clientHeight < 48;
-                }}
-                className="flex min-h-0 flex-1 flex-col gap-[11px] overflow-y-auto px-4 py-3"
-              >
-                {turns.length === 0 ? (
-                  <div className="text-[13px] text-[var(--text-3)]">No messages yet.</div>
-                ) : first?.format === "text" ? (
-                  <pre className="whitespace-pre-wrap break-words font-mono text-[12.5px] leading-[1.5]">
-                    {turns.map((turn) => turn.text).join("\n\n")}
-                  </pre>
-                ) : (
-                  turns.map((turn, index) => (
-                    <Turn key={turn.id ?? `${turn.role}-${index}`} turn={turn} />
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        <AgentConversation agent={agent} projectId={projectId} />
       ) : (
         <div
           role="tabpanel"
@@ -523,10 +205,12 @@ function AgentDetail({ agent, rig, beadIds, openBead }: AgentDetailProps) {
             <dd>{agent.pool ?? "—"}</dd>
             <dt className="text-[var(--text-3)]">State / activity</dt>
             <dd>{agent.activity ? `${agent.state} · ${agent.activity}` : agent.state}</dd>
-            <dt className="text-[var(--text-3)]">Running</dt>
-            <dd>{agent.running ? "Yes" : "No"}</dd>
-            <dt className="text-[var(--text-3)]">Suspended</dt>
-            <dd>{agent.suspended ? "Yes" : "No"}</dd>
+            <dt className="text-[var(--text-3)]">Process</dt>
+            <dd>
+              {agent.running ? "live" : "stopped"}
+              {agent.suspended && " · suspended"}
+              {agent.unavailableReason && ` · ${agent.unavailableReason}`}
+            </dd>
             <dt className="text-[var(--text-3)]">Model</dt>
             <dd>{agent.model ?? "—"}</dd>
             <dt className="text-[var(--text-3)]">Last activity</dt>
@@ -562,7 +246,7 @@ export function AgentsView() {
   const { data, isLoading, error } = useAgents(projectId);
   const { data: beadData } = useBeads(projectId);
   const { searchParams, updateUrl } = useUrlState();
-  const groupMode = searchParams.get("agentsGroup") === "status" ? "status" : "type";
+  const groupMode = searchParams.get("agentsGroup") === "pool" ? "pool" : "state";
   const rawStateFilter = searchParams.get("agentsState");
   const stateFilter = STATE_FILTERS.includes(rawStateFilter as AgentStateFilter)
     ? (rawStateFilter as AgentStateFilter)
@@ -601,9 +285,9 @@ export function AgentsView() {
     updateUrl((params) => params.set("agent", name), "replace");
   };
 
-  const selectGroup = (mode: "type" | "status") => {
+  const selectGroup = (mode: "state" | "pool") => {
     updateUrl((params) => {
-      if (mode === "status") params.set("agentsGroup", "status");
+      if (mode === "pool") params.set("agentsGroup", "pool");
       else params.delete("agentsGroup");
     }, "replace");
   };
@@ -628,43 +312,6 @@ export function AgentsView() {
       (needle === "" || agent.shortName.toLowerCase().includes(needle)),
   );
 
-  // Split visible agents into system and polecat sections, then by pool.
-  const systemAgents: GascityAgent[] = [];
-  const polecatGroups = new Map<string, GascityAgent[]>();
-  for (const agent of visibleAgents) {
-    const poolName = polecatPoolName(agent.pool, rig);
-    if (poolName === null) {
-      systemAgents.push(agent);
-    } else {
-      const group = polecatGroups.get(poolName);
-      if (group) group.push(agent);
-      else polecatGroups.set(poolName, [agent]);
-    }
-  }
-  const sortedPolecatGroups = [...polecatGroups].sort(([a], [b]) => a.localeCompare(b));
-  const polecatAgents = sortedPolecatGroups.flatMap(([, groupAgents]) => groupAgents);
-  const runningVisible = visibleAgents.filter((agent) => agent.running);
-  const stoppedVisible = visibleAgents.filter((agent) => !agent.running);
-  const systemRunning = systemAgents.filter((agent) => agent.running);
-  const systemStopped = systemAgents.filter((agent) => !agent.running);
-
-  // Reveal the selected row's ancestors whenever selection or grouping changes.
-  const visibleKey = visibleAgents.map((agent) => agent.name).join("|");
-  React.useEffect(() => {
-    if (!selectedName) return;
-    const row = document.querySelector<HTMLElement>(
-      `[data-agent-name="${CSS.escape(selectedName)}"]`,
-    );
-    if (!row) return;
-    let group = row.closest("details");
-    while (group) {
-      group.open = true;
-      group = group.parentElement?.closest("details") ?? null;
-    }
-    const frame = requestAnimationFrame(() => row.scrollIntoView({ block: "nearest" }));
-    return () => cancelAnimationFrame(frame);
-  }, [selectedName, visibleKey, groupMode]);
-
   const normal = !error && !missingData && !isLoading && data?.configured === true && agents.length > 0;
 
   return (
@@ -679,19 +326,19 @@ export function AgentsView() {
           <span className="text-[12px] text-[var(--text-3)]">Group by</span>
           <button
             type="button"
-            aria-pressed={groupMode === "type"}
-            onClick={() => selectGroup("type")}
+            aria-pressed={groupMode === "state"}
+            onClick={() => selectGroup("state")}
             className="h-8 rounded-[8px] border border-border px-3 text-[12px] aria-pressed:border-[var(--brand)] aria-pressed:bg-[var(--brand-weak)] aria-pressed:text-[var(--brand)]"
           >
-            Type
+            State
           </button>
           <button
             type="button"
-            aria-pressed={groupMode === "status"}
-            onClick={() => selectGroup("status")}
+            aria-pressed={groupMode === "pool"}
+            onClick={() => selectGroup("pool")}
             className="h-8 rounded-[8px] border border-border px-3 text-[12px] aria-pressed:border-[var(--brand)] aria-pressed:bg-[var(--brand-weak)] aria-pressed:text-[var(--brand)]"
           >
-            Status
+            Pool
           </button>
         </div>
       </div>
@@ -751,133 +398,16 @@ export function AgentsView() {
                 className="h-8 w-full rounded-[8px] border border-border bg-background px-2 text-[12px] outline-none focus:border-[var(--brand)]"
               />
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {visibleAgents.length === 0 ? (
-                <div className="p-4 text-center text-[12px] text-[var(--text-3)]">
-                  No matching agents.
-                </div>
-              ) : groupMode === "status" ? (
-                <div className="flex flex-col gap-2">
-                  <Group
-                    groupKey="status-running"
-                    defaultOpen
-                    forcedOpen={narrowing}
-                    openGroups={openGroups}
-                    onToggle={toggleGroup}
-                    label={`Running (${runningVisible.length})`}
-                  >
-                    <AgentRows
-                      agents={runningVisible}
-                      selectedName={selectedName}
-                      onSelect={selectAgent}
-                    />
-                  </Group>
-                  <Group
-                    groupKey="status-stopped"
-                    defaultOpen={false}
-                    forcedOpen={narrowing}
-                    openGroups={openGroups}
-                    onToggle={toggleGroup}
-                    label={`Stopped & suspended (${stoppedVisible.length})`}
-                  >
-                    <AgentRows
-                      agents={stoppedVisible}
-                      selectedName={selectedName}
-                      onSelect={selectAgent}
-                    />
-                  </Group>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {systemAgents.length > 0 && (
-                    <Group
-                      groupKey="system"
-                      defaultOpen
-                      forcedOpen={narrowing}
-                      openGroups={openGroups}
-                      onToggle={toggleGroup}
-                      label={groupTitle("System", systemAgents)}
-                      data-testid="agents-section-system"
-                    >
-                      <AgentRows
-                        agents={systemRunning}
-                        selectedName={selectedName}
-                        onSelect={selectAgent}
-                      />
-                      {systemStopped.length > 0 && (
-                        <Group
-                          groupKey="system-stopped"
-                          defaultOpen={false}
-                          forcedOpen={narrowing}
-                          openGroups={openGroups}
-                          onToggle={toggleGroup}
-                          label={`Stopped & suspended (${systemStopped.length})`}
-                          className="mt-1 border-x-0 border-b-0"
-                        >
-                          <AgentRows
-                            agents={systemStopped}
-                            selectedName={selectedName}
-                            onSelect={selectAgent}
-                          />
-                        </Group>
-                      )}
-                    </Group>
-                  )}
-                  {sortedPolecatGroups.length > 0 && (
-                    <Group
-                      groupKey="polecat"
-                      defaultOpen
-                      forcedOpen={narrowing}
-                      openGroups={openGroups}
-                      onToggle={toggleGroup}
-                      label={groupTitle("Polecats", polecatAgents)}
-                      data-testid="agents-section-polecat"
-                    >
-                      {sortedPolecatGroups.map(([poolName, groupAgents]) => {
-                        const running = groupAgents.filter((agent) => agent.running);
-                        const stopped = groupAgents.filter((agent) => !agent.running);
-                        return (
-                          <Group
-                            key={poolName}
-                            groupKey={`pool:${poolName}`}
-                            defaultOpen={running.length > 0}
-                            forcedOpen={narrowing}
-                            openGroups={openGroups}
-                            onToggle={toggleGroup}
-                            label={groupTitle(poolName, groupAgents)}
-                            data-agent-pool={poolName}
-                            className="mt-1 border-x-0 border-b-0"
-                          >
-                            <AgentRows
-                              agents={running}
-                              selectedName={selectedName}
-                              onSelect={selectAgent}
-                            />
-                            {stopped.length > 0 && (
-                              <Group
-                                groupKey={`pool-stopped:${poolName}`}
-                                defaultOpen={false}
-                                forcedOpen={narrowing}
-                                openGroups={openGroups}
-                                onToggle={toggleGroup}
-                                label={`Stopped & suspended (${stopped.length})`}
-                                className="mt-1 border-x-0 border-b-0"
-                              >
-                                <AgentRows
-                                  agents={stopped}
-                                  selectedName={selectedName}
-                                  onSelect={selectAgent}
-                                />
-                              </Group>
-                            )}
-                          </Group>
-                        );
-                      })}
-                    </Group>
-                  )}
-                </div>
-              )}
-            </div>
+            <AgentList
+              agents={visibleAgents}
+              rig={rig}
+              selectedName={selectedName}
+              onSelect={selectAgent}
+              groupMode={groupMode}
+              openGroups={openGroups}
+              toggleGroup={toggleGroup}
+              narrowing={narrowing}
+            />
           </aside>
 
           <section data-testid="agent-detail" className="flex min-h-0 min-w-0 flex-1 flex-col">
