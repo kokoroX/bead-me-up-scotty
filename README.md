@@ -218,8 +218,9 @@ Open **Agents** in a project to view its Gas City rig's agents, refreshed every
 30 seconds. Known active beads open their detail drawer, which also shows the
 agents assigned to that bead. This integration is read-only: Scotty sends only
 GET requests to Gas City and never changes agents or their work.
-Agent rows show active bead titles, types, priorities and IDs resolved by the server, including ephemeral wisps; if lookup fails, the row keeps the bead ID.
+Agent rows start with the agent's pool — a polecat pool name, or `system` — followed by its active bead's title, type, priority and ID, resolved by the server and including ephemeral wisps; if lookup fails, the row keeps the bead ID. An agent with no active bead shows its current activity instead.
 The **All** status filter shows every agent and is selected by default; clicking a selected status returns to All.
+The list groups agents by state — **At work** (working and waiting), **Idle**, and **Stopped and suspended** — with the first two open; **Group by → Pool** switches to the rig's system and polecat pool tree. Group headers count the same states as the status filter.
 The read-only `GET /api/p/{projectId}/agents/output?agent=<shortName>&before=<id>&tail=<0-50>` endpoint serves validated transcript pages (15-second timeout); the selected running agent's conversation refreshes every 10 seconds.
 
 - `GASCITY_API_URL`: Gas City API base URL (for example, `http://localhost:8080`).
