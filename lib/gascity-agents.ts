@@ -60,9 +60,11 @@ export interface GascityAgent {
   contextWindow: number | null;
 }
 
+export const STATE_ORDER = ["working", "waiting", "idle", "suspended", "stopped"] as const;
+
 function stateOrder(state: string): number {
-  const order = ["working", "waiting", "idle"].indexOf(state);
-  return order < 0 ? 3 : order;
+  const order = STATE_ORDER.indexOf(state as (typeof STATE_ORDER)[number]);
+  return order < 0 ? STATE_ORDER.length : order;
 }
 
 /** Strip the rig prefix from a pool name when it belongs to that rig. */
@@ -90,7 +92,7 @@ export function polecatPoolName(pool: string | null, rig: string): string | null
   return parts.slice(0, -1).join(".") || "polecat";
 }
 
-/** Validate a city response, select the rig, and sort running agents first. */
+/** Validate a city response, select the rig, and sort by state and name. */
 export function toProjectAgents(raw: unknown, rig: string): GascityAgent[] {
   const { items } = agentsSchema.parse(raw);
   const prefix = `${rig}/`;
@@ -111,7 +113,6 @@ export function toProjectAgents(raw: unknown, rig: string): GascityAgent[] {
     contextPct: agent.context_pct ?? null,
     contextWindow: agent.context_window ?? null,
   })).sort((a, b) =>
-    Number(b.running) - Number(a.running) ||
     stateOrder(a.state) - stateOrder(b.state) ||
     a.name.localeCompare(b.name),
   );
