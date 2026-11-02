@@ -246,8 +246,10 @@ try {
   await backendStopped.locator(":scope > summary").click();
   assert.equal(await row("backend.stopped").isVisible(), false, "stopped group can collapse again");
   await ledger.locator(":scope > summary").click();
-  assert.equal(await row("ledger.stopped").isVisible(), false, "stopped rows have their own disclosure");
+  assert.equal(await row("ledger.stopped").isVisible(), true, "a pool with nothing running lists its stopped rows directly");
+  assert.equal(await ledger.locator("details").count(), 0, "a stopped-only pool has no nested disclosure");
   await ledger.locator(":scope > summary").click();
+  assert.equal(await row("ledger.stopped").isVisible(), false, "closing the pool hides its stopped rows");
 
   // Selecting a row changes the detail and the persistent URL selection.
   await row("miniapp.wisp-worker").click();
@@ -283,6 +285,10 @@ try {
   await filter.fill("MINIAPP");
   assert.equal(await main.locator("[data-agent-name]").count(), 3);
   assert.equal(await row("miniapp.worker").isVisible(), true);
+  await filter.fill("witness");
+  assert.equal(await row("witness").isVisible(), true, "a system group with nothing running lists its stopped rows directly");
+  assert.equal(await systemSection.locator("details").count(), 0, "a stopped-only system group has no nested disclosure");
+  assert.equal(await systemSection.locator(":scope > ul").count(), 1, "a stopped-only system group has no empty list");
   await filter.fill("");
   // Each state dot carries its data-state and a distinct accent: working is the
   // brand color, waiting amber, idle blue, stopped grey. Suspended is a hollow
@@ -378,10 +384,8 @@ try {
   // Use CSS locators for the page while Base UI marks the background inert.
   const inertPolecat = page.locator('[data-testid="agents-section-polecat"]');
   const inertLedger = page.locator('[data-testid="agents-section-polecat"] [data-agent-pool="ledger"]');
-  const inertLedgerStopped = inertLedger.locator("details");
   await inertPolecat.evaluate((node) => { node.open = false; });
   await inertLedger.evaluate((node) => { node.open = false; });
-  await inertLedgerStopped.evaluate((node) => { node.open = false; });
   await beadAgents.getByTestId("bead-agent-link").nth(2).click();
   await drawer.waitFor({ state: "detached" });
   await detail.getByRole("heading", { name: "ledger.stopped", exact: true }).waitFor();
@@ -391,7 +395,7 @@ try {
   assert.equal(await selected.getAttribute("aria-current"), "true");
   assert.equal(await polecatSection.getAttribute("open"), "");
   assert.equal(await ledger.getAttribute("open"), "");
-  assert.equal(await ledger.locator("details").getAttribute("open"), "");
+  assert.equal(await ledger.locator("details").count(), 0, "the selected stopped row has no nested disclosure");
   assert.equal(new URL(page.url()).searchParams.get("agent"), agents[6].name);
   await page.reload();
   await detail.getByRole("heading", { name: "ledger.stopped", exact: true }).waitFor();

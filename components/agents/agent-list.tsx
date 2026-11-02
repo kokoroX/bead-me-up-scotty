@@ -89,6 +89,7 @@ function AgentRows({ agents, rig, selectedName, onSelect }: {
   selectedName: string | null;
   onSelect: (name: string) => void;
 }) {
+  if (agents.length === 0) return null;
   return (
     <ul className="border-t border-border">
       {agents.map((agent) => (
@@ -207,11 +208,17 @@ export function AgentList({ agents, rig, selectedName, onSelect, groupMode, open
         <div className="flex flex-col gap-2">
           {systemAgents.length > 0 && (
             <Group groupKey="system" defaultOpen {...groupProps} label={groupTitle("System", systemAgents)} data-testid="agents-section-system">
-              {rows(systemRunning)}
-              {systemStopped.length > 0 && (
-                <Group groupKey="system-stopped" defaultOpen={false} {...groupProps} label={groupTitle("Stopped & suspended", systemStopped)} className="mt-1 border-x-0 border-b-0">
-                  {rows(systemStopped)}
-                </Group>
+              {systemRunning.length > 0 ? (
+                <>
+                  {rows(systemRunning)}
+                  {systemStopped.length > 0 && (
+                    <Group groupKey="system-stopped" defaultOpen={false} {...groupProps} label={groupTitle("Stopped & suspended", systemStopped)} className="mt-1 border-x-0 border-b-0">
+                      {rows(systemStopped)}
+                    </Group>
+                  )}
+                </>
+              ) : (
+                rows(systemStopped)
               )}
             </Group>
           )}
@@ -222,11 +229,17 @@ export function AgentList({ agents, rig, selectedName, onSelect, groupMode, open
                 const stopped = groupAgents.filter((agent) => !agent.running);
                 return (
                   <Group key={poolName} groupKey={`pool:${poolName}`} defaultOpen={running.length > 0} {...groupProps} label={groupTitle(poolName, groupAgents)} data-agent-pool={poolName} className="mt-1 border-x-0 border-b-0">
-                    {rows(running)}
-                    {stopped.length > 0 && (
-                      <Group groupKey={`pool-stopped:${poolName}`} defaultOpen={false} {...groupProps} label={groupTitle("Stopped & suspended", stopped)} className="mt-1 border-x-0 border-b-0">
-                        {rows(stopped)}
-                      </Group>
+                    {running.length > 0 ? (
+                      <>
+                        {rows(running)}
+                        {stopped.length > 0 && (
+                          <Group groupKey={`pool-stopped:${poolName}`} defaultOpen={false} {...groupProps} label={groupTitle("Stopped & suspended", stopped)} className="mt-1 border-x-0 border-b-0">
+                            {rows(stopped)}
+                          </Group>
+                        )}
+                      </>
+                    ) : (
+                      rows(stopped)
                     )}
                   </Group>
                 );
