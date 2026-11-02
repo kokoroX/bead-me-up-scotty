@@ -212,7 +212,7 @@ export function AgentList({ agents, rig, selectedName, onSelect, groupMode, open
                 <>
                   {rows(systemRunning)}
                   {systemStopped.length > 0 && (
-                    <Group groupKey="system-stopped" defaultOpen={false} {...groupProps} label={groupTitle("Stopped & suspended", systemStopped)} className="mt-1 border-x-0 border-b-0">
+                    <Group groupKey="system-stopped" defaultOpen={false} {...groupProps} label={groupTitle(GROUP_LABELS.off, systemStopped)} className="mt-1 border-x-0 border-b-0">
                       {rows(systemStopped)}
                     </Group>
                   )}
@@ -233,7 +233,7 @@ export function AgentList({ agents, rig, selectedName, onSelect, groupMode, open
                       <>
                         {rows(running)}
                         {stopped.length > 0 && (
-                          <Group groupKey={`pool-stopped:${poolName}`} defaultOpen={false} {...groupProps} label={groupTitle("Stopped & suspended", stopped)} className="mt-1 border-x-0 border-b-0">
+                          <Group groupKey={`pool-stopped:${poolName}`} defaultOpen={false} {...groupProps} label={groupTitle(GROUP_LABELS.off, stopped)} className="mt-1 border-x-0 border-b-0">
                             {rows(stopped)}
                           </Group>
                         )}

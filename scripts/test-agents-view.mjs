@@ -223,6 +223,7 @@ try {
   const systemStopped = systemSection.locator("details");
   assert.equal(await systemStopped.count(), 1);
   assert.equal(await systemStopped.getAttribute("open"), null);
+  assert.equal(await systemStopped.locator(":scope > summary").innerText(), "Stopped and suspended (1)");
   assert.equal(await row("witness").isVisible(), false);
   assert.deepEqual(
     await polecatSection.locator("[data-agent-pool]").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-agent-pool"))),
@@ -239,6 +240,7 @@ try {
   assert.equal(await ledger.getAttribute("open"), null);
   const backendStopped = backend.locator("details");
   assert.equal(await backendStopped.getAttribute("open"), null);
+  assert.equal(await backendStopped.locator(":scope > summary").innerText(), "Stopped and suspended (2 · 1 suspended · 1 stopped)");
   assert.equal(await row("backend.stopped").isVisible(), false);
   await backendStopped.locator(":scope > summary").click();
   await row("backend.stopped").waitFor();
