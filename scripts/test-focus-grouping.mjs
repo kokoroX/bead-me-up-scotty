@@ -9,6 +9,8 @@ const bead = (id, extra = {}) => ({ id, title: id, status: 'open', issue_type: '
 const dep = (type, target) => ({ type, depends_on_id: target });
 let beads = [
   bead('source', { priority: 3 }),
+  bead('queued', { metadata: { 'gc.routed_to': 'pool' } }),
+  bead('working', { assignee: 'Alice', metadata: { 'gc.execution_routed_to': 'pool/agent' } }),
   bead('manual-block', { status: 'blocked', assignee: 'Alice', labels: ['ctx:alpha'] }),
   bead('waiting', { assignee: 'Bob', dependencies: [dep('waits-for', 'source')] }),
   bead('conditional', { dependencies: [dep('conditional-blocks', 'source')] }),
@@ -59,6 +61,15 @@ try {
   await group.selectOption('assignee');
   const row = label => page.getByRole('region', { name: `Assignee: ${label}`, exact: true });
   await row('Alice').waitFor();
+  assert.deepEqual(await row('No assignee').locator('[data-focus-column]').evaluateAll(els => els.map(e => e.dataset.focusColumn)),
+    ['flight', 'queued', 'working', 'blocked', 'next']);
+  assert.equal(await row('Alice').locator('[data-focus-column="working"] [data-keyboard-bead-id="working"]').count(), 1);
+  assert.equal(await row('No assignee').locator('[data-focus-column="queued"] [data-keyboard-bead-id="queued"]').count(), 1);
+  const alignment = await row('No assignee').locator('[data-focus-column="queued"]').evaluate(el => {
+    const header = [...document.querySelectorAll('[aria-hidden="true"] > div')].find(e => e.textContent.startsWith('Queued'));
+    return header ? Math.abs(header.getBoundingClientRect().left - el.getBoundingClientRect().left) : Infinity;
+  });
+  assert.ok(alignment < 1, 'queued header aligns with grouped column');
   assert.equal(await row('Unassigned').locator('article').count(), 1);
   assert.equal(await row('No assignee').locator('[data-keyboard-bead-id="blank-assignee"]').count(), 1);
   assert.equal((await ids('flight')).length, 16);
