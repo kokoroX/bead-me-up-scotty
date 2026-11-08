@@ -11,6 +11,9 @@ let beads = [
   bead('source', { priority: 3 }),
   bead('queued', { metadata: { 'gc.routed_to': 'pool' } }),
   bead('working', { assignee: 'Alice', metadata: { 'gc.execution_routed_to': 'pool/agent' } }),
+  bead('grp-cv', { issue_type: 'convoy', metadata: { 'gc.synthetic': 'true' }, dependencies: [dep('tracks', 'working')] }),
+  bead('grp-wf', { status: 'in_progress', metadata: { 'gc.kind': 'workflow', 'gc.input_convoy_id': 'grp-cv' } }),
+  bead('grp-st', { status: 'in_progress', metadata: { 'gc.step_id': 'mol-polecat-work.implement', 'gc.root_bead_id': 'grp-wf' } }),
   bead('manual-block', { status: 'blocked', assignee: 'Alice', labels: ['ctx:alpha'] }),
   bead('waiting', { assignee: 'Bob', dependencies: [dep('waits-for', 'source')] }),
   bead('conditional', { dependencies: [dep('conditional-blocks', 'source')] }),
@@ -48,6 +51,8 @@ try {
   await page.goto(`${base}/p/demo?view=focus`);
   const group = page.getByRole('combobox', { name: 'Group by' });
   await group.waitFor();
+  // Beads stream in after the shell mounts; wait for the first render with data.
+  await page.locator('[data-focus-column="flight"] article').first().waitFor();
   assert.equal(await group.inputValue(), 'none');
   const recent = page.getByRole('button', { name: 'Recently finished', exact: true });
   assert.equal(await recent.getAttribute('aria-pressed'), 'false');
