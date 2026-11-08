@@ -185,9 +185,14 @@ under your OS config dir, not in beads).
 
 **Focus** is an optional view for current work: In flight, Queued, Agent working, Blocked,
 and Next up (open, unblocked P0/P1 work). Queued shows unassigned, unblocked, non-epic work
-routed via bead metadata `gc.routed_to`; it reads metadata directly and does not
-require `GASCITY_API_URL`. Agent working shows open or in-progress
-work with `gc.execution_routed_to`, including the current agent and step when available.
+routed to a Gas City agent via `gc.routed_to` or `gc.execution_routed_to` whose
+workflow has no claimed or running step yet; it reads metadata directly and does not
+require `GASCITY_API_URL`. Agent working shows work routed for execution
+(`gc.execution_routed_to`) only once a step bead under its convoy's workflow is
+running or claimed (`gc.claimed_at`), and includes the current agent and step when available.
+Queued, Agent working, and Blocked cards show the route target as a chip: work that was
+slinged but is still waiting on a dependency stays visible as blocked and still shows where
+it was dispatched (with the idle chip colors, since it is not running).
 Gas City internal convoy, workflow, and step beads are hidden from Focus. Board is the default whenever you open or reload a
 project. Enable **Use Focus as the default view** in Settings to start in Focus instead. This toggle is off
 by default and saves automatically for all projects in the current browser.

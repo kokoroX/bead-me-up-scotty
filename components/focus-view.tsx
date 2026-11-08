@@ -10,9 +10,13 @@ import type { Bead } from "@/lib/schema";
  * Focus — "what's happening now". Five fixed columns cut by status × priority:
  *
  *   In flight     — in_progress or hooked work, excluding agent working
- *   Queued        — open, routed, unassigned, unblocked, non-epic work
- *   Agent working — open or in_progress work routed for execution
- *   Blocked       — blocked status, or open with an unresolved blocking dep
+ *   Queued        — open, routed for execution (gc.routed_to or
+ *                   gc.execution_routed_to), unassigned, unblocked, non-epic work
+ *                   whose workflow has no claimed/running step yet
+ *   Agent working — routed for execution and its convoy's workflow has a step bead
+ *                   that is in_progress or carries gc.claimed_at
+ *   Blocked       — blocked status, or open with an unresolved blocking dep;
+ *                   still shows its Gas City route target chip when dispatched
  *   Next up       — open, unblocked, P0/P1 only, excluding queued and working
  *
  * Gas City internal convoy, workflow and step beads are excluded from Focus.
@@ -90,6 +94,15 @@ function assigneeGroups(columns: FocusColumn[]) {
     Number(b.active) - Number(a.active) || a.label.localeCompare(b.label) || a.key.localeCompare(b.key));
 }
 
+// Route target chip per column. Blocked work still shows where it was dispatched:
+// a slinged bead with an unresolved blocking dep is blocked, not idle.
+function cardMeta(column: FocusColumn, bead: Bead, workingDetails: Map<string, { text: string }>): string | undefined {
+  if (column.id === "blocked") return executionTarget(bead) ?? routedTarget(bead) ?? undefined;
+  if (column.agent === "queued") return routedTarget(bead) ?? executionTarget(bead) ?? undefined;
+  if (column.agent === "working") return workingDetails.get(bead.id)?.text ?? executionTarget(bead) ?? undefined;
+  return undefined;
+}
+
 function laneOf(b: Bead, prefix: string): string | null {
   const l = (b.labels ?? []).find((x) => x.startsWith(prefix));
   return l ? l.slice(prefix.length) : null;
@@ -132,7 +145,12 @@ export function FocusView() {
     [prefix, selectedLane],
   );
 
-  const workingDetails = React.useMemo(() => {
+  // A work bead counts as "agent working" only when a step bead under its
+  // convoy's workflow has actually been claimed or started. The workflow bead
+  // itself being in_progress says nothing: gc sling creates the workflow but a
+  // polecat may never pick up a step. Steps need no assignee — a running
+  // workflow root keeps assignee null.
+  const { liveIds, workingDetails } = React.useMemo(() => {
     const convoys = new Map<string, string[]>();
     const workflows = new Map<string, string>();
     for (const b of beads) {
@@ -142,29 +160,37 @@ export function FocusView() {
       const convoy = b.metadata?.["gc.input_convoy_id"];
       if (b.metadata?.["gc.kind"] === "workflow" && typeof convoy === "string") workflows.set(b.id, convoy);
     }
+    const liveIds = new Set<string>();
     const details = new Map<string, { text: string; claimed: number }>();
     for (const b of beads) {
       const root = b.metadata?.["gc.root_bead_id"];
       const stepId = b.metadata?.["gc.step_id"];
-      if (b.status !== "in_progress" || typeof root !== "string" || typeof stepId !== "string" || !stepId.trim() || !b.assignee?.trim()) continue;
+      // root_bead_id excludes the workflow bead itself; step_id excludes beads
+      // that are not workflow steps.
+      if (typeof root !== "string" || !root.trim() || typeof stepId !== "string" || !stepId.trim()) continue;
+      const claimedAt = b.metadata?.["gc.claimed_at"];
+      const claimedAtText = typeof claimedAt === "string" ? claimedAt.trim() : "";
+      if (b.status !== "in_progress" && !claimedAtText) continue;
       const convoy = workflows.get(root);
+      const tracked = convoys.get(convoy ?? "") ?? [];
+      for (const id of tracked) liveIds.add(id);
+      if (!b.assignee?.trim()) continue;
       const ref = b.metadata?.["gc.step_ref"];
       const step = typeof ref === "string" && ref.trim() ? ref.trim() : stepId.trim();
-      const claimedAt = b.metadata?.["gc.claimed_at"];
       const claimed = typeof claimedAt === "string" ? Date.parse(claimedAt) || 0 : 0;
-      for (const id of convoys.get(convoy ?? "") ?? []) {
+      for (const id of tracked) {
         if (!details.has(id) || claimed > details.get(id)!.claimed) {
           details.set(id, { text: `${b.assignee.trim()} · ${step.split(".").pop()}`, claimed });
         }
       }
     }
-    return details;
+    return { liveIds, workingDetails: details };
   }, [beads]);
 
   const working = React.useMemo(
-    () => active.filter(b => (b.status === "open" || b.status === "in_progress") && executionTarget(b) !== null && inLane(b))
+    () => active.filter(b => executionTarget(b) !== null && liveIds.has(b.id) && inLane(b))
       .sort((a, b) => a.priority - b.priority || (a.created_at || "").localeCompare(b.created_at || "") || a.id.localeCompare(b.id)),
-    [active, inLane],
+    [active, inLane, liveIds],
   );
   const workingIds = React.useMemo(() => new Set(working.map(b => b.id)), [working]);
   const inFlight = React.useMemo(
@@ -177,9 +203,10 @@ export function FocusView() {
   );
   const queued = React.useMemo(
     () => active.filter((b) => b.status === "open" && !b.assignee?.trim() &&
-      routedTarget(b) !== null && !isBlocked(b, index) && b.issue_type !== "epic" && inLane(b) && !workingIds.has(b.id))
+      (routedTarget(b) ?? executionTarget(b)) !== null && !liveIds.has(b.id) &&
+      !isBlocked(b, index) && b.issue_type !== "epic" && inLane(b))
       .sort((a, b) => a.priority - b.priority || (a.created_at || "").localeCompare(b.created_at || "") || a.id.localeCompare(b.id)),
-    [active, index, inLane, workingIds],
+    [active, index, inLane, liveIds],
   );
   const nextUp = React.useMemo(() => {
     const queuedIds = new Set(queued.map(b => b.id));
@@ -193,8 +220,8 @@ export function FocusView() {
   const recentItems = showAllRecent ? recentlyFinished : recentlyFinished.slice(0, RECENT_LIMIT);
   const columns: FocusColumn[] = [
     { id: "flight", title: "In flight", hint: "in progress or hooked", items: inFlight },
-    { id: "queued", title: "Queued", hint: "routed to a Gas City agent · not yet claimed", items: queued, agent: "queued" },
-    { id: "working", title: "Agent working", hint: "Gas City workflow running", items: working, agent: "working" },
+    { id: "queued", title: "Queued", hint: "sent to an agent · not started", items: queued, agent: "queued" },
+    { id: "working", title: "Agent working", hint: "running a workflow step", items: working, agent: "working" },
     { id: "blocked", title: "Blocked", hint: "waiting on a dependency or marked blocked", items: blocked },
     { id: "next", title: "Next up", hint: "ready · P0/P1", items: nextUp },
     ...(showRecent ? [{ id: "recent", title: "Recently finished", hint: "latest completions", items: recentItems }] : []),
@@ -300,7 +327,7 @@ function FocusColumnView({ column, workingDetails, grouped = false }: { column: 
         {column.items.length === 0 ? <div className="p-4 text-center text-[12px] text-[var(--text-3)]">Nothing here.</div> : (
           <div className="flex flex-col gap-2">{column.items.map(b => (
             <FocusCard key={b.id} bead={b} showBlockers={column.id === "blocked"} agent={column.agent}
-              meta={column.agent === "queued" ? routedTarget(b) ?? undefined : column.agent === "working" ? workingDetails.get(b.id)?.text ?? executionTarget(b) ?? undefined : undefined} />
+              meta={cardMeta(column, b, workingDetails)} />
           ))}</div>
         )}
       </div>
@@ -336,6 +363,9 @@ function LaneChip({
 function FocusCard({ bead, showBlockers, meta, agent }: { bead: Bead; showBlockers?: boolean; meta?: string; agent?: FocusColumn["agent"] }) {
   const { index, openDetail, selectedBeadId, selectBead } = useApp();
   const colors = agent ? agentColors(agent) : undefined;
+  // Chips need a palette even when the column has no agent: blocked cards stay
+  // uncolored (no agent border/background) but use idle colors for the chip.
+  const chipColors = colors ?? (meta ? agentColors("queued") : undefined);
   const blockers = showBlockers ? blockingDeps(bead, index) : [];
   const timestamp = bead.status === "closed" ? completionDate(bead) : bead.updated_at;
   return (
@@ -380,7 +410,7 @@ function FocusCard({ bead, showBlockers, meta, agent }: { bead: Bead; showBlocke
       </div>
       <div className="mt-[6px] flex min-w-0 items-center gap-[8px] text-[10.5px] text-[var(--text-3)]">
         <span className="shrink-0 whitespace-nowrap" title={fmtDateTime(timestamp)}>{relTime(timestamp)}</span>
-        {meta && colors && <span className="flex min-w-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono" style={{ background: colors.weak, color: colors.accent }} title={meta}>
+        {meta && chipColors && <span className="flex max-w-[60%] shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono" style={{ background: chipColors.weak, color: chipColors.accent }} title={meta}>
           <Icon name="bot" size={11} className="shrink-0" /><span className="min-w-0 truncate">{meta}</span>
         </span>}
         {blockers.length > 0 && (

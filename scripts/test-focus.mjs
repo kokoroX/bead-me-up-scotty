@@ -17,6 +17,18 @@ const beads = [
   bead('st', { status: 'in_progress', assignee: 'rig/admin.furiosa', metadata: { 'gc.step_id': 'mol-polecat-work.implement', 'gc.step_ref': 'mol-polecat-work.implement', 'gc.root_bead_id': 'wf', 'gc.claimed_at': '2026-09-01T00:00:00Z' } }),
   bead('st-old', { status: 'in_progress', assignee: 'old-agent', metadata: { 'gc.step_id': 'mol-polecat-work.old', 'gc.root_bead_id': 'wf', 'gc.claimed_at': '2026-08-01T00:00:00Z' } }),
   bead('working-nostep', { metadata: { 'gc.execution_routed_to': 'rig/backend.polecat' } }),
+  bead('cv-stuck', { issue_type: 'convoy', metadata: { 'gc.synthetic': 'true' }, dependencies: [dep('tracks', 'working-stuck')] }),
+  bead('wf-stuck', { status: 'in_progress', metadata: { 'gc.kind': 'workflow', 'gc.input_convoy_id': 'cv-stuck' } }),
+  bead('st-stuck', { metadata: { 'gc.step_id': 'mol-polecat-work.implement', 'gc.root_bead_id': 'wf-stuck' } }),
+  bead('working-stuck', { metadata: { 'gc.execution_routed_to': 'rig/backend.polecat' } }),
+  bead('cv-live', { issue_type: 'convoy', metadata: { 'gc.synthetic': 'true' }, dependencies: [dep('tracks', 'working-live')] }),
+  bead('wf-live', { status: 'in_progress', metadata: { 'gc.kind': 'workflow', 'gc.input_convoy_id': 'cv-live' } }),
+  bead('st-live', { status: 'in_progress', metadata: { 'gc.step_id': 'mol-polecat-work.implement', 'gc.root_bead_id': 'wf-live' } }),
+  bead('working-live', { metadata: { 'gc.execution_routed_to': 'rig/beta.polecat' } }),
+  bead('cv-claimed', { issue_type: 'convoy', metadata: { 'gc.synthetic': 'true' }, dependencies: [dep('tracks', 'working-claimed')] }),
+  bead('wf-claimed', { status: 'in_progress', metadata: { 'gc.kind': 'workflow', 'gc.input_convoy_id': 'cv-claimed' } }),
+  bead('st-claimed', { metadata: { 'gc.step_id': 'mol-polecat-work.verify', 'gc.root_bead_id': 'wf-claimed', 'gc.claimed_at': '2026-09-01T00:00:00Z' } }),
+  bead('working-claimed', { metadata: { 'gc.execution_routed_to': 'rig/gamma.polecat' } }),
   bead('merging', { status: 'blocked', assignee: 'rig/admin.refinery', metadata: { 'gc.execution_routed_to': 'rig/admin.polecat' } }),
   bead('ready', { labels: ['ctx:beta'] }),
   bead('queued', { metadata: { 'gc.routed_to': 'playground/polecat' }, labels: ['ctx:alpha'] }),
@@ -61,24 +73,46 @@ try {
     assert.deepEqual(await times.evaluateAll(els => els.map(el => getComputedStyle(el).whiteSpace)), Array(await times.count()).fill('nowrap'));
   }
   assert.equal(await column('In flight').getAttribute('data-agent-column'), null);
-  assert.deepEqual(await column('Agent working').locator('article').evaluateAll(els => els.map(e => e.dataset.keyboardBeadId)), ['working', 'working-nostep']);
+  assert.deepEqual(await column('Agent working').locator('article').evaluateAll(els => els.map(e => e.dataset.keyboardBeadId)), ['working', 'working-claimed', 'working-live']);
   assert.match(await column('Agent working').getByRole('button', { name: 'working', exact: true }).innerText(), /rig\/admin\.furiosa · implement/);
   assert.equal(await column('Agent working').getByTitle('rig/admin.furiosa · implement').count(), 1);
-  assert.match(await column('Agent working').getByRole('button', { name: 'working-nostep', exact: true }).innerText(), /rig\/backend\.polecat/);
+  // Active steps without an assignee still count as working; meta falls back to the execution route.
+  assert.match(await column('Agent working').getByRole('button', { name: 'working-live', exact: true }).innerText(), /rig\/beta\.polecat/);
+  assert.match(await column('Agent working').getByRole('button', { name: 'working-claimed', exact: true }).innerText(), /rig\/gamma\.polecat/);
   assert.equal(await column('Next up').getByRole('button', { name: 'working', exact: true }).count(), 0);
   assert.equal(await column('Blocked').getByRole('button', { name: 'merging', exact: true }).count(), 1);
   assert.equal(await column('Agent working').getByRole('button', { name: 'merging', exact: true }).count(), 0);
-  for (const id of ['cv', 'wf', 'st', 'st-old']) assert.equal(await page.locator(`[data-focus-column] [data-keyboard-bead-id="${id}"]`).count(), 0);
+  for (const id of ['cv', 'wf', 'st', 'st-old', 'cv-stuck', 'wf-stuck', 'st-stuck',
+    'cv-live', 'wf-live', 'st-live', 'cv-claimed', 'wf-claimed', 'st-claimed']) {
+    assert.equal(await page.locator(`[data-focus-column] [data-keyboard-bead-id="${id}"]`).count(), 0);
+  }
   assert.equal(await page.getByRole('button', { name: 'internal', exact: true }).count(), 0);
-  assert.match(await page.locator('header').filter({ has: page.getByRole('heading', { name: 'Focus', exact: true }) }).innerText(), /2 agent working/);
+  assert.match(await page.locator('header').filter({ has: page.getByRole('heading', { name: 'Focus', exact: true }) }).innerText(), /3 agent working/);
+  // Dispatched work whose workflow never had a step claimed stays queued, even though
+  // the workflow bead itself is in_progress.
   assert.deepEqual(await column('Queued').locator('article').evaluateAll(els => els.map(e => e.dataset.keyboardBeadId)),
-    ['queued-first-a', 'queued-first-b', 'queued', 'queued-later']);
+    ['queued-first-a', 'queued-first-b', 'queued', 'working-nostep', 'working-stuck', 'queued-later']);
+  assert.match(await column('Queued').getByRole('button', { name: 'working-nostep', exact: true }).innerText(), /rig\/backend\.polecat/);
+  assert.match(await column('Queued').getByRole('button', { name: 'working-stuck', exact: true }).innerText(), /rig\/backend\.polecat/);
   assert.match(await column('Queued').getByRole('button', { name: 'queued', exact: true }).innerText(), /playground\/polecat/);
   assert.equal(await column('Queued').getByTitle('playground/polecat').count(), 1);
   assert.equal(await column('Next up').getByRole('button', { name: 'queued', exact: true }).count(), 0);
   assert.equal(await column('Next up').getByRole('button', { name: 'queued-taken', exact: true }).count(), 1);
   assert.equal(await column('Blocked').getByRole('button', { name: 'queued-blocked', exact: true }).count(), 1);
-  assert.match(await page.locator('header').filter({ has: page.getByRole('heading', { name: 'Focus', exact: true }) }).innerText(), /4 queued/);
+  // Blocked cards keep the Gas City route target chip even though the column has no agent.
+  assert.equal(await column('Blocked').getAttribute('data-agent-column'), null);
+  assert.equal(await column('Blocked').locator('h2 svg').count(), 0);
+  assert.match(await column('Blocked').getByRole('button', { name: 'merging', exact: true }).innerText(), /rig\/admin\.polecat/);
+  assert.equal(await column('Blocked').getByTitle('rig/admin.polecat').count(), 1);
+  // The route chip keeps its full width: blockers truncate first, so the chip must not shrink.
+  assert.equal(await column('Blocked').getByTitle('rig/admin.polecat').evaluate(el => getComputedStyle(el).flexShrink), '0');
+  assert.match(await column('Blocked').getByRole('button', { name: 'queued-blocked', exact: true }).innerText(), /(^|\s)x(\s|$)/);
+  // A blocked bead without routing metadata gets no chip at all.
+  const manualTitles = await column('Blocked').getByRole('button', { name: 'manual', exact: true })
+    .locator('span[title]').evaluateAll(els => els.map(el => el.getAttribute('title') || ''));
+  assert.deepEqual(manualTitles.filter(t => t.includes('/')), []);
+  assert.equal(await column('Blocked').getByRole('button', { name: 'manual', exact: true }).getByTitle(/rig\/|^x$/).count(), 0);
+  assert.match(await page.locator('header').filter({ has: page.getByRole('heading', { name: 'Focus', exact: true }) }).innerText(), /6 queued/);
   assert.match(await ids('Blocked'), /waiting/);
   assert.match(await ids('Blocked'), /conditional/);
   assert.match(await ids('Blocked'), /manual/);
