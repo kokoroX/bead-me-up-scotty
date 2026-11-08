@@ -12,9 +12,10 @@ import type { Bead } from "@/lib/schema";
  *   In flight     — in_progress or hooked work, excluding agent working
  *   Queued        — open, routed for execution (gc.routed_to or
  *                   gc.execution_routed_to), unassigned, unblocked, non-epic work
- *                   whose workflow has no claimed/running step yet
- *   Agent working — routed for execution and its convoy's workflow has a step bead
- *                   that is in_progress or carries gc.claimed_at
+ *                   whose workflow has no unclosed claimed/running step yet
+ *   Agent working — routed for execution, still open or in_progress, and its
+ *                   convoy's workflow has an unclosed step bead that is
+ *                   in_progress or carries gc.claimed_at
  *   Blocked       — blocked status, or open with an unresolved blocking dep;
  *                   still shows its Gas City route target chip when dispatched
  *   Next up       — open, unblocked, P0/P1 only, excluding queued and working
@@ -168,6 +169,9 @@ export function FocusView() {
       // root_bead_id excludes the workflow bead itself; step_id excludes beads
       // that are not workflow steps.
       if (typeof root !== "string" || !root.trim() || typeof stepId !== "string" || !stepId.trim()) continue;
+      // gc.claimed_at is history: Gas City leaves it on a step after the step
+      // closes, so claimed_at alone would keep a finished workflow live forever.
+      if (b.status === "closed") continue;
       const claimedAt = b.metadata?.["gc.claimed_at"];
       const claimedAtText = typeof claimedAt === "string" ? claimedAt.trim() : "";
       if (b.status !== "in_progress" && !claimedAtText) continue;
@@ -188,7 +192,10 @@ export function FocusView() {
   }, [beads]);
 
   const working = React.useMemo(
-    () => active.filter(b => executionTarget(b) !== null && liveIds.has(b.id) && inLane(b))
+    // active also holds closed beads (Recently finished) and blocked ones; closed
+    // work is done and blocked work belongs to Blocked, not to this column.
+    () => active.filter(b => (b.status === "open" || b.status === "in_progress") &&
+      executionTarget(b) !== null && liveIds.has(b.id) && inLane(b))
       .sort((a, b) => a.priority - b.priority || (a.created_at || "").localeCompare(b.created_at || "") || a.id.localeCompare(b.id)),
     [active, inLane, liveIds],
   );
