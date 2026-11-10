@@ -22,6 +22,9 @@ import type { Bead } from "@/lib/schema";
  *   Next up       — open, unblocked, P0/P1 only, excluding queued and working
  *
  * Gas City internal convoy, workflow and step beads are excluded from Focus.
+ * Merging cards (handed from a polecat to a refinery) keep the Agent working
+ * column palette but swap the left border and chip color to the merge teal and
+ * show a `merge · <agent>` chip so they read apart from steps still running.
  * Recently finished work can be shown as an optional sixth column.
  * Everything else (the deep ready pool, P2+ backlog) stays behind
  * the Board/List views — that's the point: an optional screen that answers
@@ -41,6 +44,11 @@ function agentColors(agent: NonNullable<FocusColumn["agent"]>) {
     ? { accent: "var(--brand)", weak: "var(--brand-weak)" }
     : { accent: "var(--idle)", weak: "var(--idle-weak)" };
 }
+
+const mergeColors = { accent: "var(--merge)", weak: "var(--merge-weak)" };
+
+type CardTone = "merging";
+type CardChip = { text: string; title: string; tone?: CardTone };
 
 function completionDate(bead: Bead): string | undefined {
   // Invalid/missing completion dates fall back to the last known update.
@@ -105,14 +113,28 @@ function assigneeGroups(columns: FocusColumn[]) {
 
 // Route target chip per column. Blocked work still shows where it was dispatched:
 // a slinged bead with an unresolved blocking dep is blocked, not idle.
-function cardMeta(column: FocusColumn, bead: Bead, workingDetails: Map<string, { text: string }>): string | undefined {
-  if (column.id === "blocked") return executionTarget(bead) ?? routedTarget(bead) ?? undefined;
-  if (column.agent === "queued") return routedTarget(bead) ?? executionTarget(bead) ?? undefined;
+// Cards handed to a refinery for merging get their own tone and a shortened
+// `merge · <agent>` label so the chip survives max-w-[60%] truncation.
+function cardChip(column: FocusColumn, bead: Bead, workingDetails: Map<string, { text: string }>): CardChip | undefined {
+  if (column.id === "blocked") return chipText(executionTarget(bead) ?? routedTarget(bead) ?? undefined);
+  if (column.agent === "queued") return chipText(routedTarget(bead) ?? executionTarget(bead) ?? undefined);
   if (column.agent === "working") {
+    // A running step wins over a refinery handover: merging starts once the
+    // polecat's step is gone.
+    const running = workingDetails.get(bead.id)?.text;
+    if (running) return chipText(running);
     const refinery = refineryAssignee(bead);
-    return workingDetails.get(bead.id)?.text ?? (refinery !== null ? `${refinery} · merge` : undefined) ?? executionTarget(bead) ?? undefined;
+    if (refinery !== null) {
+      const short = refinery.slice(refinery.lastIndexOf("/") + 1);
+      return { text: `merge · ${short}`, title: `merge · ${refinery}`, tone: "merging" };
+    }
+    return chipText(executionTarget(bead) ?? undefined);
   }
   return undefined;
+}
+
+function chipText(text: string | undefined): CardChip | undefined {
+  return text === undefined ? undefined : { text, title: text };
 }
 
 function laneOf(b: Bead, prefix: string): string | null {
@@ -348,7 +370,7 @@ function FocusColumnView({ column, workingDetails, grouped = false }: { column: 
         {column.items.length === 0 ? <div className="p-4 text-center text-[12px] text-[var(--text-3)]">Nothing here.</div> : (
           <div className="flex flex-col gap-2">{column.items.map(b => (
             <FocusCard key={b.id} bead={b} showBlockers={column.id === "blocked"} agent={column.agent}
-              meta={cardMeta(column, b, workingDetails)} />
+              chip={cardChip(column, b, workingDetails)} />
           ))}</div>
         )}
       </div>
@@ -381,12 +403,16 @@ function LaneChip({
   );
 }
 
-function FocusCard({ bead, showBlockers, meta, agent }: { bead: Bead; showBlockers?: boolean; meta?: string; agent?: FocusColumn["agent"] }) {
+function FocusCard({ bead, showBlockers, chip, agent }: { bead: Bead; showBlockers?: boolean; chip?: CardChip; agent?: FocusColumn["agent"] }) {
   const { index, openDetail, selectedBeadId, selectBead } = useApp();
   const colors = agent ? agentColors(agent) : undefined;
+  // Merging cards are still Agent working, so the column keeps its palette; only
+  // this card's left border and chip switch to the merge teal.
+  const toneColors = chip?.tone === "merging" ? mergeColors : undefined;
+  const accentColors = toneColors ?? colors;
   // Chips need a palette even when the column has no agent: blocked cards stay
   // uncolored (no agent border/background) but use idle colors for the chip.
-  const chipColors = colors ?? (meta ? agentColors("queued") : undefined);
+  const chipColors = accentColors ?? (chip ? agentColors("queued") : undefined);
   const blockers = showBlockers ? blockingDeps(bead, index) : [];
   const timestamp = bead.status === "closed" ? completionDate(bead) : bead.updated_at;
   return (
@@ -395,6 +421,7 @@ function FocusCard({ bead, showBlockers, meta, agent }: { bead: Bead; showBlocke
       tabIndex={0}
       aria-label={bead.title}
       data-keyboard-bead-id={bead.id}
+      data-tone={chip?.tone}
       aria-current={selectedBeadId === bead.id ? "true" : undefined}
       onFocus={() => selectBead(bead.id)}
       onKeyDown={(event) => {
@@ -408,8 +435,8 @@ function FocusCard({ bead, showBlockers, meta, agent }: { bead: Bead; showBlocke
         selectBead(bead.id);
         openDetail(bead.id);
       }}
-      style={colors ? { borderLeftColor: colors.accent } : undefined}
-      className={`cursor-pointer rounded-[11px] border ${colors ? "border-l-[3px]" : ""} bg-[var(--surface)] p-[10px_12px] shadow-[var(--shadow)] hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-lg)] focus-visible:outline-none ${
+      style={accentColors ? { borderLeftColor: accentColors.accent } : undefined}
+      className={`cursor-pointer rounded-[11px] border ${accentColors ? "border-l-[3px]" : ""} bg-[var(--surface)] p-[10px_12px] shadow-[var(--shadow)] hover:border-[var(--border-strong)] hover:shadow-[var(--shadow-lg)] focus-visible:outline-none ${
         selectedBeadId === bead.id
           ? "border-[var(--brand)] ring-2 ring-[var(--brand)]/30"
           : "border-border"
@@ -431,8 +458,8 @@ function FocusCard({ bead, showBlockers, meta, agent }: { bead: Bead; showBlocke
       </div>
       <div className="mt-[6px] flex min-w-0 items-center gap-[8px] text-[10.5px] text-[var(--text-3)]">
         <span className="shrink-0 whitespace-nowrap" title={fmtDateTime(timestamp)}>{relTime(timestamp)}</span>
-        {meta && chipColors && <span className="flex max-w-[60%] shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono" style={{ background: chipColors.weak, color: chipColors.accent }} title={meta}>
-          <Icon name="bot" size={11} className="shrink-0" /><span className="min-w-0 truncate">{meta}</span>
+        {chip && chipColors && <span className="flex max-w-[60%] shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono" style={{ background: chipColors.weak, color: chipColors.accent }} title={chip.title}>
+          <Icon name="bot" size={11} className="shrink-0" /><span className="min-w-0 truncate">{chip.text}</span>
         </span>}
         {blockers.length > 0 && (
           <span className="truncate font-mono" title={`blocked by ${blockers.join(", ")}`}>
