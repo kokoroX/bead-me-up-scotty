@@ -48,6 +48,11 @@ const beads = [
   bead('st-cl', { status: 'in_progress', metadata: { 'gc.step_id': 'mol-polecat-work.implement', 'gc.root_bead_id': 'wf-cl' } }),
   bead('working-closed', { status: 'closed', metadata: { 'gc.execution_routed_to': 'rig/zeta.polecat' } }),
   bead('merging', { status: 'blocked', assignee: 'rig/admin.refinery', metadata: { 'gc.execution_routed_to': 'rig/admin.polecat' } }),
+  // Handed from the polecat to the refinery for merging: open, dispatched, no
+  // running step any more, but still live work.
+  bead('refinery-merge', { priority: 2, assignee: 'rig/admin.refinery', metadata: { 'gc.routed_to': '', 'gc.execution_routed_to': 'rig/admin.polecat' } }),
+  // Refinery-assigned but still held by a dependency: Blocked wins.
+  bead('refinery-dep', { priority: 2, assignee: 'rig/admin.refinery', metadata: { 'gc.execution_routed_to': 'rig/admin.polecat' }, dependencies: [dep('waits-for', 'upstream')] }),
   bead('ready', { labels: ['ctx:beta'] }),
   bead('queued', { metadata: { 'gc.routed_to': 'playground/polecat' }, labels: ['ctx:alpha'] }),
   bead('queued-taken', { assignee: 'someone', metadata: { 'gc.routed_to': 'playground/polecat' } }),
@@ -91,12 +96,20 @@ try {
     assert.deepEqual(await times.evaluateAll(els => els.map(el => getComputedStyle(el).whiteSpace)), Array(await times.count()).fill('nowrap'));
   }
   assert.equal(await column('In flight').getAttribute('data-agent-column'), null);
-  assert.deepEqual(await column('Agent working').locator('article').evaluateAll(els => els.map(e => e.dataset.keyboardBeadId)), ['working', 'working-claimed', 'working-live']);
+  assert.deepEqual(await column('Agent working').locator('article').evaluateAll(els => els.map(e => e.dataset.keyboardBeadId)), ['working', 'working-claimed', 'working-live', 'refinery-merge']);
   assert.match(await column('Agent working').getByRole('button', { name: 'working', exact: true }).innerText(), /rig\/admin\.furiosa · implement/);
   assert.equal(await column('Agent working').getByTitle('rig/admin.furiosa · implement').count(), 1);
   // Active steps without an assignee still count as working; meta falls back to the execution route.
   assert.match(await column('Agent working').getByRole('button', { name: 'working-live', exact: true }).innerText(), /rig\/beta\.polecat/);
   assert.match(await column('Agent working').getByRole('button', { name: 'working-claimed', exact: true }).innerText(), /rig\/gamma\.polecat/);
+  // A refinery-assigned, dispatched, unblocked bead is merging: Agent working with a
+  // `<refinery> · merge` chip, and in no other column.
+  assert.match(await column('Agent working').getByRole('button', { name: 'refinery-merge', exact: true }).innerText(), /rig\/admin\.refinery · merge/);
+  assert.equal(await column('Queued').getByRole('button', { name: 'refinery-merge', exact: true }).count(), 0);
+  assert.equal(await column('Next up').getByRole('button', { name: 'refinery-merge', exact: true }).count(), 0);
+  // A refinery-assigned bead held by a dependency stays Blocked and never works.
+  assert.equal(await column('Blocked').getByRole('button', { name: 'refinery-dep', exact: true }).count(), 1);
+  assert.equal(await column('Agent working').getByRole('button', { name: 'refinery-dep', exact: true }).count(), 0);
   assert.equal(await column('Next up').getByRole('button', { name: 'working', exact: true }).count(), 0);
   assert.equal(await column('Blocked').getByRole('button', { name: 'merging', exact: true }).count(), 1);
   assert.equal(await column('Agent working').getByRole('button', { name: 'merging', exact: true }).count(), 0);
@@ -106,7 +119,7 @@ try {
     assert.equal(await page.locator(`[data-focus-column] [data-keyboard-bead-id="${id}"]`).count(), 0);
   }
   assert.equal(await page.getByRole('button', { name: 'internal', exact: true }).count(), 0);
-  assert.match(await page.locator('header').filter({ has: page.getByRole('heading', { name: 'Focus', exact: true }) }).innerText(), /3 agent working/);
+  assert.match(await page.locator('header').filter({ has: page.getByRole('heading', { name: 'Focus', exact: true }) }).innerText(), /4 agent working/);
   // Dispatched work whose workflow never had a step claimed stays queued, even though
   // the workflow bead itself is in_progress.
   assert.deepEqual(await column('Queued').locator('article').evaluateAll(els => els.map(e => e.dataset.keyboardBeadId)),
@@ -132,9 +145,10 @@ try {
   assert.equal(await column('Blocked').getAttribute('data-agent-column'), null);
   assert.equal(await column('Blocked').locator('h2 svg').count(), 0);
   assert.match(await column('Blocked').getByRole('button', { name: 'merging', exact: true }).innerText(), /rig\/admin\.polecat/);
-  assert.equal(await column('Blocked').getByTitle('rig/admin.polecat').count(), 1);
+  // Scope the chip checks to the merging card: refinery-dep carries the same route target.
+  assert.equal(await column('Blocked').getByRole('button', { name: 'merging', exact: true }).getByTitle('rig/admin.polecat').count(), 1);
   // The route chip keeps its full width: blockers truncate first, so the chip must not shrink.
-  assert.equal(await column('Blocked').getByTitle('rig/admin.polecat').evaluate(el => getComputedStyle(el).flexShrink), '0');
+  assert.equal(await column('Blocked').getByRole('button', { name: 'merging', exact: true }).getByTitle('rig/admin.polecat').evaluate(el => getComputedStyle(el).flexShrink), '0');
   assert.match(await column('Blocked').getByRole('button', { name: 'queued-blocked', exact: true }).innerText(), /(^|\s)x(\s|$)/);
   // A blocked bead without routing metadata gets no chip at all.
   const manualTitles = await column('Blocked').getByRole('button', { name: 'manual', exact: true })

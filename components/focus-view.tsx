@@ -15,7 +15,8 @@ import type { Bead } from "@/lib/schema";
  *                   whose workflow has no unclosed claimed/running step yet
  *   Agent working — routed for execution, still open or in_progress, and its
  *                   convoy's workflow has an unclosed step bead that is
- *                   in_progress or carries gc.claimed_at
+ *                   in_progress or carries gc.claimed_at — or assigned to a
+ *                   Gas City refinery (handed over for merge)
  *   Blocked       — blocked status, or open with an unresolved blocking dep;
  *                   still shows its Gas City route target chip when dispatched
  *   Next up       — open, unblocked, P0/P1 only, excluding queued and working
@@ -63,6 +64,13 @@ function executionTarget(bead: Bead): string | null {
   return typeof target === "string" ? target.trim() || null : null;
 }
 
+// A bead assigned to `<rig>/<name>.refinery` has been handed from the polecat
+// to the refinery for merging, so it is live work even without a running step.
+function refineryAssignee(bead: Bead): string | null {
+  const assignee = bead.assignee?.trim();
+  return assignee && assignee.endsWith(".refinery") ? assignee : null;
+}
+
 function isGascityInternal(bead: Bead): boolean {
   const synthetic = bead.metadata?.["gc.synthetic"];
   const step = bead.metadata?.["gc.step_id"];
@@ -100,7 +108,10 @@ function assigneeGroups(columns: FocusColumn[]) {
 function cardMeta(column: FocusColumn, bead: Bead, workingDetails: Map<string, { text: string }>): string | undefined {
   if (column.id === "blocked") return executionTarget(bead) ?? routedTarget(bead) ?? undefined;
   if (column.agent === "queued") return routedTarget(bead) ?? executionTarget(bead) ?? undefined;
-  if (column.agent === "working") return workingDetails.get(bead.id)?.text ?? executionTarget(bead) ?? undefined;
+  if (column.agent === "working") {
+    const refinery = refineryAssignee(bead);
+    return workingDetails.get(bead.id)?.text ?? (refinery !== null ? `${refinery} · merge` : undefined) ?? executionTarget(bead) ?? undefined;
+  }
   return undefined;
 }
 
@@ -194,10 +205,13 @@ export function FocusView() {
   const working = React.useMemo(
     // active also holds closed beads (Recently finished) and blocked ones; closed
     // work is done and blocked work belongs to Blocked, not to this column.
+    // Work handed to a refinery is merging, not queued: it counts once the bead
+    // is dispatched and unblocked even though its workflow step has closed.
     () => active.filter(b => (b.status === "open" || b.status === "in_progress") &&
-      executionTarget(b) !== null && liveIds.has(b.id) && inLane(b))
+      executionTarget(b) !== null && inLane(b) &&
+      (liveIds.has(b.id) || (refineryAssignee(b) !== null && !isBlocked(b, index))))
       .sort((a, b) => a.priority - b.priority || (a.created_at || "").localeCompare(b.created_at || "") || a.id.localeCompare(b.id)),
-    [active, inLane, liveIds],
+    [active, inLane, index, liveIds],
   );
   const workingIds = React.useMemo(() => new Set(working.map(b => b.id)), [working]);
   const inFlight = React.useMemo(
@@ -228,7 +242,7 @@ export function FocusView() {
   const columns: FocusColumn[] = [
     { id: "flight", title: "In flight", hint: "in progress or hooked", items: inFlight },
     { id: "queued", title: "Queued", hint: "sent to an agent · not started", items: queued, agent: "queued" },
-    { id: "working", title: "Agent working", hint: "running a workflow step", items: working, agent: "working" },
+    { id: "working", title: "Agent working", hint: "running a step or merging", items: working, agent: "working" },
     { id: "blocked", title: "Blocked", hint: "waiting on a dependency or marked blocked", items: blocked },
     { id: "next", title: "Next up", hint: "ready · P0/P1", items: nextUp },
     ...(showRecent ? [{ id: "recent", title: "Recently finished", hint: "latest completions", items: recentItems }] : []),
