@@ -76,11 +76,14 @@
   --brand: #6d5ef0;
   --brand-2: #5546e0;
   --brand-weak: #efedfd;
-  /* agent state accents (waiting / idle); working uses --brand, the rest --text-3 */
+  /* agent state accents (waiting / idle / merge); working uses --brand, the rest --text-3.
+     merge tints cards handed to a refinery for the merging phase. */
   --waiting: #d97706;
   --waiting-weak: #fef3c7;
   --idle: #0284c7;
   --idle-weak: #e0f2fe;
+  --merge: #0d9488;
+  --merge-weak: #ccfbf1;
   --shadow: 0 1px 2px rgba(20, 20, 30, 0.05), 0 1px 1px rgba(20, 20, 30, 0.04);
   --shadow-lg: 0 12px 32px -8px rgba(20, 20, 40, 0.18), 0 4px 12px -4px rgba(20, 20, 40, 0.1);
   --drawer: #ffffff;
@@ -132,6 +135,8 @@
   --waiting-weak: #3a2a0a;
   --idle: #38bdf8;
   --idle-weak: #0c2a3a;
+  --merge: #2dd4bf;
+  --merge-weak: #0b2e2b;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 16px 40px -8px rgba(0, 0, 0, 0.6);
   --drawer: #141417;

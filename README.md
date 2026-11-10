@@ -192,7 +192,9 @@ work routed for execution (`gc.execution_routed_to`) only once an unclosed step 
 under its convoy's workflow is running or claimed, and includes the current agent and
 step when available. Dispatched work assigned to a Gas City refinery (`*.refinery`) also
 counts as Agent working once it is unblocked — the polecat has handed it over for merge —
-and its card shows `<refinery> · merge` instead of the route target.
+and its card shows a `merge · <agent>` chip (rig prefix dropped, full name on hover)
+in its own teal tone instead of the route target, so it reads apart from cards still
+running a step.
 `gc.claimed_at` is history: Gas City leaves it on a step after
 the step closes, so a workflow that finished sends its work bead back to Queued.
 Closed work belongs to Recently finished, and work held by a dependency belongs to

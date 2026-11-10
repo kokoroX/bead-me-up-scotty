@@ -103,8 +103,30 @@ try {
   assert.match(await column('Agent working').getByRole('button', { name: 'working-live', exact: true }).innerText(), /rig\/beta\.polecat/);
   assert.match(await column('Agent working').getByRole('button', { name: 'working-claimed', exact: true }).innerText(), /rig\/gamma\.polecat/);
   // A refinery-assigned, dispatched, unblocked bead is merging: Agent working with a
-  // `<refinery> · merge` chip, and in no other column.
-  assert.match(await column('Agent working').getByRole('button', { name: 'refinery-merge', exact: true }).innerText(), /rig\/admin\.refinery · merge/);
+  // `merge · <agent>` chip, and in no other column.
+  const mergeCard = column('Agent working').getByRole('button', { name: 'refinery-merge', exact: true });
+  const workingCard = column('Agent working').getByRole('button', { name: 'working', exact: true });
+  assert.match(await mergeCard.innerText(), /merge · admin\.refinery/);
+  assert.equal(await mergeCard.getByTitle('merge · rig/admin.refinery').count(), 1);
+  // Merging cards carry their own tone: data-tone marks them and the card's left
+  // border plus the chip swap to the merge palette. Colours are asserted exactly
+  // (the test page is light-themed): a dropped or mis-scoped CSS variable renders
+  // as black/none, which a mere "differs from working" check would let through.
+  assert.equal(await mergeCard.getAttribute('data-tone'), 'merging');
+  assert.equal(await workingCard.getAttribute('data-tone'), null);
+  const computedStyle = (locator, prop) =>
+    locator.evaluate((el, prop) => getComputedStyle(el)[prop], prop);
+  const mergeChip = mergeCard.getByTitle('merge · rig/admin.refinery');
+  const workingChip = workingCard.getByTitle('rig/admin.furiosa · implement');
+  assert.equal(await computedStyle(mergeCard, 'borderLeftColor'), 'rgb(13, 148, 136)'); // --merge
+  assert.equal(await computedStyle(mergeChip, 'color'), 'rgb(13, 148, 136)'); // --merge
+  assert.equal(await computedStyle(mergeChip, 'backgroundColor'), 'rgb(204, 251, 241)'); // --merge-weak
+  // Still distinct from a card running a step, which stays on the brand palette.
+  assert.notEqual(
+    await computedStyle(mergeCard, 'borderLeftColor'),
+    await computedStyle(workingCard, 'borderLeftColor'),
+  );
+  assert.notEqual(await computedStyle(mergeChip, 'color'), await computedStyle(workingChip, 'color'));
   assert.equal(await column('Queued').getByRole('button', { name: 'refinery-merge', exact: true }).count(), 0);
   assert.equal(await column('Next up').getByRole('button', { name: 'refinery-merge', exact: true }).count(), 0);
   // A refinery-assigned bead held by a dependency stays Blocked and never works.
