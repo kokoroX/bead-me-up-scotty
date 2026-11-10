@@ -190,7 +190,10 @@ workflow has no unclosed claimed or running step yet; it reads metadata directly
 and does not require `GASCITY_API_URL`. Agent working shows open or in_progress
 work routed for execution (`gc.execution_routed_to`) only once an unclosed step bead
 under its convoy's workflow is running or claimed, and includes the current agent and
-step when available. `gc.claimed_at` is history: Gas City leaves it on a step after
+step when available. Dispatched work assigned to a Gas City refinery (`*.refinery`) also
+counts as Agent working once it is unblocked — the polecat has handed it over for merge —
+and its card shows `<refinery> · merge` instead of the route target.
+`gc.claimed_at` is history: Gas City leaves it on a step after
 the step closes, so a workflow that finished sends its work bead back to Queued.
 Closed work belongs to Recently finished, and work held by a dependency belongs to
 Blocked even while its step is running.
